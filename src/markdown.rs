@@ -1,0 +1,172 @@
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Parser, Tag, TagEnd};
+
+#[derive(Debug, Clone)]
+pub enum Block {
+    Heading { level: u8, text: String },
+    Paragraph { spans: Vec<Span> },
+    BulletList { items: Vec<ListItem> },
+    NumberedList { items: Vec<ListItem> },
+    CodeBlock { lang: Option<String>, code: String },
+    HorizontalRule,
+    #[allow(dead_code)]
+    Blank,
+}
+
+#[derive(Debug, Clone)]
+pub struct ListItem {
+    pub spans: Vec<Span>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Span {
+    Plain(String),
+    Bold(String),
+    Italic(String),
+    Code(String),
+}
+
+pub fn parse_blocks(markdown: &str) -> Vec<Block> {
+    let parser = Parser::new(markdown);
+    let mut blocks = Vec::new();
+    let mut state = ParseState::default();
+
+    for event in parser {
+        match event {
+            Event::Start(Tag::Heading { level, .. }) => {
+                state.in_heading = true;
+                state.heading_level = heading_to_u8(level);
+                state.text_buf.clear();
+            }
+            Event::End(TagEnd::Heading(_)) => {
+                state.in_heading = false;
+                let text: String = state.text_buf.drain(..).collect();
+                blocks.push(Block::Heading {
+                    level: state.heading_level,
+                    text,
+                });
+            }
+            Event::Start(Tag::Paragraph) => {
+                if !state.in_list {
+                    state.spans.clear();
+                }
+            }
+            Event::End(TagEnd::Paragraph) => {
+                if !state.in_list {
+                    if !state.spans.is_empty() {
+                        blocks.push(Block::Paragraph {
+                            spans: state.spans.drain(..).collect(),
+                        });
+                    }
+                }
+            }
+            Event::Start(Tag::List(ordered)) => {
+                state.in_list = true;
+                state.ordered = ordered.is_some();
+                state.list_items.clear();
+            }
+            Event::End(TagEnd::List(_)) => {
+                state.in_list = false;
+                let items: Vec<ListItem> = state.list_items.drain(..).collect();
+                if state.ordered {
+                    blocks.push(Block::NumberedList { items });
+                } else {
+                    blocks.push(Block::BulletList { items });
+                }
+            }
+            Event::Start(Tag::Item) => {
+                state.spans.clear();
+            }
+            Event::End(TagEnd::Item) => {
+                state.list_items.push(ListItem {
+                    spans: state.spans.drain(..).collect(),
+                });
+            }
+            Event::Start(Tag::CodeBlock(kind)) => {
+                state.in_code = true;
+                state.code_lang = match kind {
+                    CodeBlockKind::Fenced(lang) => {
+                        let l = lang.to_string();
+                        if l.is_empty() { None } else { Some(l) }
+                    }
+                    CodeBlockKind::Indented => None,
+                };
+                state.text_buf.clear();
+            }
+            Event::End(TagEnd::CodeBlock) => {
+                state.in_code = false;
+                let code: String = state.text_buf.drain(..).collect();
+                blocks.push(Block::CodeBlock {
+                    lang: state.code_lang.take(),
+                    code: code.trim_end().to_string(),
+                });
+            }
+            Event::Start(Tag::Emphasis) => {
+                state.in_italic = true;
+            }
+            Event::End(TagEnd::Emphasis) => {
+                state.in_italic = false;
+            }
+            Event::Start(Tag::Strong) => {
+                state.in_bold = true;
+            }
+            Event::End(TagEnd::Strong) => {
+                state.in_bold = false;
+            }
+            Event::Text(text) => {
+                if state.in_code || state.in_heading {
+                    state.text_buf.push(text.to_string());
+                } else if state.in_bold {
+                    state.spans.push(Span::Bold(text.to_string()));
+                } else if state.in_italic {
+                    state.spans.push(Span::Italic(text.to_string()));
+                } else {
+                    state.spans.push(Span::Plain(text.to_string()));
+                }
+            }
+            Event::Code(text) => {
+                state.spans.push(Span::Code(text.to_string()));
+            }
+            Event::SoftBreak | Event::HardBreak => {
+                if state.in_code {
+                    state.text_buf.push("\n".to_string());
+                } else if state.in_heading {
+                    state.text_buf.push(" ".to_string());
+                } else {
+                    state.spans.push(Span::Plain(" ".to_string()));
+                }
+            }
+            Event::Rule => {
+                blocks.push(Block::HorizontalRule);
+            }
+            _ => {}
+        }
+    }
+
+    blocks
+}
+
+fn heading_to_u8(level: HeadingLevel) -> u8 {
+    match level {
+        HeadingLevel::H1 => 1,
+        HeadingLevel::H2 => 2,
+        HeadingLevel::H3 => 3,
+        HeadingLevel::H4 => 4,
+        HeadingLevel::H5 => 5,
+        HeadingLevel::H6 => 6,
+    }
+}
+
+#[derive(Default)]
+struct ParseState {
+    in_heading: bool,
+    heading_level: u8,
+    in_list: bool,
+    ordered: bool,
+    in_code: bool,
+    in_bold: bool,
+    in_italic: bool,
+    code_lang: Option<String>,
+    text_buf: Vec<String>,
+    spans: Vec<Span>,
+    list_items: Vec<ListItem>,
+}

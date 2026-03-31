@@ -12,6 +12,8 @@ pub enum TransitionKind {
     None,
     Glitch,
     Fade,
+    Wipe,
+    Dissolve,
 }
 
 pub struct TransitionState {
@@ -94,6 +96,49 @@ pub fn apply_transition(frame: &mut Frame, area: Rect, state: &TransitionState, 
                                 cell.set_char(ch);
                                 cell.set_style(Style::default().fg(theme.dim).bg(theme.bg));
                             }
+                        }
+                    }
+                }
+            }
+        }
+        TransitionKind::Wipe => {
+            // Clean left-to-right wipe revealing the new slide
+            // A vertical bar sweeps across; cells left of it are revealed, right are blanked
+            let progress_col = (t * area.width as f64) as u16;
+            let edge_width = 3u16; // soft edge gradient
+
+            for y in 0..area.height {
+                for x in 0..area.width {
+                    if x > progress_col + edge_width {
+                        // Not yet revealed: blank
+                        if let Some(cell) = buf.cell_mut((area.x + x, area.y + y)) {
+                            cell.set_char(' ');
+                            cell.set_style(Style::default().bg(theme.bg));
+                        }
+                    } else if x > progress_col {
+                        // Soft edge: thin line
+                        let ch = '│';
+                        if let Some(cell) = buf.cell_mut((area.x + x, area.y + y)) {
+                            cell.set_char(ch);
+                            cell.set_style(Style::default().fg(theme.dim).bg(theme.bg));
+                        }
+                    }
+                    // x <= progress_col: already revealed (slide content shows through)
+                }
+            }
+        }
+        TransitionKind::Dissolve => {
+            // Soft pixel dissolve — cells randomly appear with easing
+            // Uses smoothstep for a gentler feel than linear random
+            let eased = t * t * (3.0 - 2.0 * t); // smoothstep
+            for y in 0..area.height {
+                for x in 0..area.width {
+                    if rng.next_f64() > eased {
+                        // Not yet dissolved: show a soft dot
+                        let ch = '·';
+                        if let Some(cell) = buf.cell_mut((area.x + x, area.y + y)) {
+                            cell.set_char(ch);
+                            cell.set_style(Style::default().fg(theme.dim).bg(theme.bg));
                         }
                     }
                 }

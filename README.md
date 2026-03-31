@@ -106,7 +106,7 @@ Right content here
 | `title` | Any string | `"Untitled"` |
 | `author` | Any string | - |
 | `theme` | `"hacker"`, `"corporate"`, `"catppuccin"`, `"minimal"` | `"hacker"` |
-| `transition` | `"none"`, `"glitch"`, `"fade"` | `"none"` |
+| `transition` | `"none"`, `"glitch"`, `"fade"`, `"wipe"`, `"dissolve"` | Theme default |
 | `background` | See backgrounds below | - |
 
 ### Per-Slide Directives
@@ -156,10 +156,14 @@ Set in frontmatter (applies to first slide) or per-slide with `<!-- background: 
 
 Use `--theme corporate` or set `theme = "corporate"` in frontmatter.
 
-- **hacker** (default) - Dark background, matrix green, neon pink accents, cyan headings
-- **corporate** - Deep navy background, blue headings, gold accents — for business meetings
-- **catppuccin** - Catppuccin Mocha palette — pastel pink accents, blue headings, peach bold
-- **minimal** - Terminal default background, white text, yellow accents
+| Theme | Look | Font | Transition |
+|-------|------|------|------------|
+| **hacker** (default) | Matrix green, neon pink, cyan headings | Block (`█`) | Glitch |
+| **corporate** | Navy, blue headings, gold accents | Thin (`┌─┐`) | Wipe |
+| **catppuccin** | Mocha palette, pink accents, peach bold | Block (`█`) | Dissolve |
+| **minimal** | Terminal defaults, white, yellow accents | Thin (`┌─┐`) | Fade |
+
+Each theme carries its own default transition and font style. Override with `transition = "glitch"` in frontmatter.
 
 ## License
 

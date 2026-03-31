@@ -1,6 +1,9 @@
 use ratatui::style::{Color, Modifier, Style};
 use serde::Deserialize;
 
+use crate::bigtext::FontStyle;
+use crate::transition::TransitionKind;
+
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeName {
@@ -22,6 +25,8 @@ pub struct Theme {
     pub bold: Color,
     pub italic: Color,
     pub bullet: &'static str,
+    pub font: FontStyle,
+    pub default_transition: TransitionKind,
 }
 
 impl Theme {
@@ -46,6 +51,8 @@ impl Theme {
             bold: Color::Rgb(255, 255, 100),
             italic: Color::Rgb(150, 150, 255),
             bullet: ">",
+            font: FontStyle::Block,
+            default_transition: TransitionKind::Glitch,
         }
     }
 
@@ -62,6 +69,8 @@ impl Theme {
             bold: Color::Rgb(250, 179, 135),    // Peach
             italic: Color::Rgb(180, 190, 254),  // Lavender
             bullet: "◆",
+            font: FontStyle::Block,
+            default_transition: TransitionKind::Dissolve,
         }
     }
 
@@ -77,6 +86,8 @@ impl Theme {
             bold: Color::Rgb(245, 248, 255),
             italic: Color::Rgb(150, 175, 215),
             bullet: "•",
+            font: FontStyle::Thin,
+            default_transition: TransitionKind::Wipe,
         }
     }
 
@@ -92,6 +103,8 @@ impl Theme {
             bold: Color::White,
             italic: Color::Gray,
             bullet: "·",
+            font: FontStyle::Thin,
+            default_transition: TransitionKind::Fade,
         }
     }
 

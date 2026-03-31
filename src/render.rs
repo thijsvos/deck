@@ -181,7 +181,7 @@ fn render_block(
 ) -> u16 {
     match block {
         Block::Heading { level: 1, text } => {
-            let big = bigtext::render(text);
+            let big = bigtext::render(text, theme.font);
             let height = big.len() as u16;
             for (i, line_str) in big.iter().enumerate() {
                 if area.y + i as u16 >= area.y + area.height {

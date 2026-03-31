@@ -289,8 +289,13 @@ impl App {
     }
 
     fn start_transition(&mut self) {
-        if !matches!(self.deck.meta.transition, TransitionKind::None) {
-            self.transition = Some(TransitionState::new(self.deck.meta.transition.clone()));
+        // Use frontmatter transition if explicitly set, otherwise theme default
+        let kind = match self.deck.meta.transition {
+            TransitionKind::None => self.theme.default_transition.clone(),
+            ref explicit => explicit.clone(),
+        };
+        if !matches!(kind, TransitionKind::None) {
+            self.transition = Some(TransitionState::new(kind));
         }
     }
 }

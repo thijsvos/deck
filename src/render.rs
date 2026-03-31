@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use ratatui::{
     layout::{Constraint, Direction, Layout as RLayout, Rect},
     text::{Line, Span as RSpan},
@@ -6,6 +8,7 @@ use ratatui::{
 };
 
 use crate::bigtext;
+use crate::image_renderer::{self, DeferredImage, ImageCache, ImageProtocol};
 use crate::markdown::{Block, Span};
 use crate::parse::{Layout, Slide};
 use crate::theme::Theme;
@@ -16,6 +19,10 @@ pub fn render_slide(
     slide: &Slide,
     theme: &Theme,
     reveal: usize,
+    protocol: ImageProtocol,
+    image_cache: &mut ImageCache,
+    deferred: &mut Vec<DeferredImage>,
+    base_dir: &Path,
 ) {
     // Fill background
     let bg = WidgetBlock::default().style(theme.body_style());
@@ -25,7 +32,7 @@ pub fn render_slide(
 
     match slide.layout {
         Layout::Default => {
-            render_blocks(frame, content, &slide.blocks, theme, reveal);
+            render_blocks(frame, content, &slide.blocks, theme, reveal, protocol, image_cache, deferred, base_dir);
         }
         Layout::Center => {
             let total_height = estimate_height(&slide.blocks, content.width);
@@ -35,10 +42,9 @@ pub fn render_slide(
                 height: total_height.min(content.height),
                 ..content
             };
-            render_blocks(frame, centered, &slide.blocks, theme, reveal);
+            render_blocks(frame, centered, &slide.blocks, theme, reveal, protocol, image_cache, deferred, base_dir);
         }
         Layout::Columns => {
-            // Render heading blocks above columns
             let mut y = content.y;
             for block in &slide.blocks {
                 let remaining = Rect::new(
@@ -47,7 +53,7 @@ pub fn render_slide(
                     content.width,
                     content.height.saturating_sub(y - content.y),
                 );
-                let h = render_block(frame, remaining, block, theme);
+                let h = render_block(frame, remaining, block, theme, protocol, image_cache, deferred, base_dir);
                 y += h;
             }
 
@@ -64,8 +70,8 @@ pub fn render_slide(
                     .spacing(2)
                     .split(col_area);
 
-                render_blocks(frame, halves[0], &cols.left, theme, usize::MAX);
-                render_blocks(frame, halves[1], &cols.right, theme, usize::MAX);
+                render_blocks(frame, halves[0], &cols.left, theme, usize::MAX, protocol, image_cache, deferred, base_dir);
+                render_blocks(frame, halves[1], &cols.right, theme, usize::MAX, protocol, image_cache, deferred, base_dir);
             }
         }
     }
@@ -112,6 +118,10 @@ fn render_blocks(
     blocks: &[Block],
     theme: &Theme,
     reveal: usize,
+    protocol: ImageProtocol,
+    image_cache: &mut ImageCache,
+    deferred: &mut Vec<DeferredImage>,
+    base_dir: &Path,
 ) {
     let mut y = area.y;
     let mut bullet_count: usize = 0;
@@ -152,14 +162,23 @@ fn render_blocks(
                 }
             }
             _ => {
-                let h = render_block(frame, remaining, block, theme);
+                let h = render_block(frame, remaining, block, theme, protocol, image_cache, deferred, base_dir);
                 y += h;
             }
         }
     }
 }
 
-fn render_block(frame: &mut Frame, area: Rect, block: &Block, theme: &Theme) -> u16 {
+fn render_block(
+    frame: &mut Frame,
+    area: Rect,
+    block: &Block,
+    theme: &Theme,
+    protocol: ImageProtocol,
+    image_cache: &mut ImageCache,
+    deferred: &mut Vec<DeferredImage>,
+    base_dir: &Path,
+) -> u16 {
     match block {
         Block::Heading { level: 1, text } => {
             let big = bigtext::render(text);
@@ -251,6 +270,55 @@ fn render_block(frame: &mut Frame, area: Rect, block: &Block, theme: &Theme) -> 
             );
             2
         }
+        Block::Image { path, alt } => {
+            // Load and resize image
+            let img = match image_cache.load(path, base_dir) {
+                Some(img) => img.clone(),
+                None => {
+                    // Fallback: show alt text
+                    let label = if alt.is_empty() {
+                        format!("[Image: {}]", path)
+                    } else {
+                        format!("[Image: {}]", alt)
+                    };
+                    let line = Line::from(RSpan::styled(label, theme.rule_style()));
+                    frame.render_widget(Paragraph::new(line), Rect::new(area.x, area.y, area.width, 1));
+                    return 2;
+                }
+            };
+
+            let resized = image_renderer::resize_to_fit(&img, area.width, area.height);
+            let (px_w, px_h) = resized.dimensions();
+            let consumed_rows = ((px_h + 1) / 2) as u16;
+            let consumed_cols = px_w as u16;
+
+            // Center horizontally
+            let x_offset = area.width.saturating_sub(consumed_cols) / 2;
+            let img_area = Rect::new(
+                area.x + x_offset,
+                area.y,
+                consumed_cols,
+                consumed_rows.min(area.height),
+            );
+
+            // Always render half-blocks into the buffer
+            let buf = frame.buffer_mut();
+            image_renderer::render_halfblocks(buf, img_area, &resized);
+
+            // Queue deferred high-res render for Kitty/Sixel
+            if matches!(protocol, ImageProtocol::Kitty | ImageProtocol::Sixel) {
+                deferred.push(DeferredImage {
+                    x: img_area.x,
+                    y: img_area.y,
+                    cols: consumed_cols,
+                    rows: consumed_rows.min(area.height),
+                    rgba: resized,
+                    protocol,
+                });
+            }
+
+            consumed_rows + 1
+        }
         Block::Blank => 1,
     }
 }
@@ -298,6 +366,7 @@ fn estimate_height(blocks: &[Block], width: u16) -> u16 {
             Block::NumberedList { items } => items.len() as u16,
             Block::CodeBlock { code, .. } => code.lines().count() as u16 + 3,
             Block::HorizontalRule => 2,
+            Block::Image { .. } => 8,
             Block::Blank => 1,
         })
         .sum()

@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::time::Instant;
 
 use ratatui::{
@@ -8,11 +9,13 @@ use ratatui::{
 };
 
 use crate::background;
+use crate::image_renderer::{DeferredImage, ImageCache, ImageProtocol};
 use crate::input::{map_key, Action};
 use crate::markdown::Block;
 use crate::parse::{Deck, Slide};
 use crate::render;
 use crate::render_presenter;
+use crate::sync::SyncFile;
 use crate::theme::Theme;
 use crate::transition::{self, TransitionKind, TransitionState};
 
@@ -33,10 +36,23 @@ pub struct App {
     pub start: Instant,
     pub timer: Instant,
     pub theme: Theme,
+    pub sync: Option<SyncFile>,
+    pub is_follower: bool,
+    pub protocol: ImageProtocol,
+    pub image_cache: ImageCache,
+    pub deferred_images: Vec<DeferredImage>,
+    pub base_dir: PathBuf,
 }
 
 impl App {
-    pub fn new(deck: Deck, theme: Theme) -> Self {
+    pub fn new(
+        deck: Deck,
+        theme: Theme,
+        sync: Option<SyncFile>,
+        is_follower: bool,
+        protocol: ImageProtocol,
+        base_dir: PathBuf,
+    ) -> Self {
         let reveal = initial_reveal(&deck.slides[0]);
         let now = Instant::now();
         Self {
@@ -51,6 +67,12 @@ impl App {
             start: now,
             timer: now,
             theme,
+            sync,
+            is_follower,
+            protocol,
+            image_cache: ImageCache::new(),
+            deferred_images: Vec::new(),
+            base_dir,
         }
     }
 
@@ -58,7 +80,18 @@ impl App {
         self.deck.slides[self.slide_index].background.is_some()
     }
 
-    pub fn draw(&self, frame: &mut Frame) {
+    pub fn cleanup_sync(&self) {
+        // Only the presenter cleans up the sync file
+        if let Some(ref sync) = self.sync {
+            if !self.is_follower {
+                sync.cleanup();
+            }
+        }
+    }
+
+    pub fn draw(&mut self, frame: &mut Frame) {
+        self.deferred_images.clear();
+
         let area = frame.area();
 
         let chunks = RLayout::default()
@@ -73,7 +106,10 @@ impl App {
         match self.mode {
             Mode::Normal => {
                 let slide = &self.deck.slides[self.slide_index];
-                render::render_slide(frame, main_area, slide, &self.theme, self.reveal_count);
+                render::render_slide(
+                    frame, main_area, slide, &self.theme, self.reveal_count,
+                    self.protocol, &mut self.image_cache, &mut self.deferred_images, &self.base_dir,
+                );
 
                 // Animated background fills empty cells around content
                 if let Some(ref bg) = slide.background {
@@ -82,7 +118,12 @@ impl App {
                 }
             }
             Mode::Presenter => {
-                render_presenter::render_presenter(frame, main_area, self);
+                render_presenter::render_presenter(
+                    frame, main_area,
+                    &self.deck, self.slide_index, self.reveal_count,
+                    &self.theme, &self.timer,
+                    self.protocol, &mut self.image_cache, &mut self.deferred_images, &self.base_dir,
+                );
             }
         }
 
@@ -114,6 +155,12 @@ impl App {
 
     /// Returns true if the app should quit.
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
+        // Follower mode: only allow quit
+        if self.is_follower {
+            let action = map_key(key, false);
+            return matches!(action, Action::Quit);
+        }
+
         let action = map_key(key, self.in_goto);
 
         match action {
@@ -176,6 +223,30 @@ impl App {
                 self.transition = None;
             }
         }
+
+        // Follower: read sync file and update position
+        if self.is_follower {
+            if let Some(ref sync) = self.sync {
+                if let Some((slide, reveal)) = sync.read() {
+                    let slide = slide.min(self.deck.slides.len().saturating_sub(1));
+                    if slide != self.slide_index {
+                        self.slide_index = slide;
+                        self.reveal_count = reveal;
+                        self.start_transition();
+                    } else if reveal != self.reveal_count {
+                        self.reveal_count = reveal;
+                    }
+                }
+            }
+        }
+    }
+
+    fn write_sync(&self) {
+        if let Some(ref sync) = self.sync {
+            if !self.is_follower {
+                sync.write(self.slide_index, self.reveal_count);
+            }
+        }
     }
 
     fn advance(&mut self) {
@@ -187,6 +258,7 @@ impl App {
             self.reveal_count = initial_reveal(&self.deck.slides[self.slide_index]);
             self.start_transition();
         }
+        self.write_sync();
     }
 
     fn go_back(&mut self) {
@@ -203,6 +275,7 @@ impl App {
             };
             self.start_transition();
         }
+        self.write_sync();
     }
 
     fn go_to(&mut self, index: usize) {
@@ -212,6 +285,7 @@ impl App {
             self.reveal_count = initial_reveal(&self.deck.slides[self.slide_index]);
             self.start_transition();
         }
+        self.write_sync();
     }
 
     fn start_transition(&mut self) {

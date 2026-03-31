@@ -8,6 +8,7 @@ pub enum Block {
     NumberedList { items: Vec<ListItem> },
     CodeBlock { lang: Option<String>, code: String },
     HorizontalRule,
+    Image { path: String, alt: String },
     #[allow(dead_code)]
     Blank,
 }
@@ -113,7 +114,9 @@ pub fn parse_blocks(markdown: &str) -> Vec<Block> {
                 state.in_bold = false;
             }
             Event::Text(text) => {
-                if state.in_code || state.in_heading {
+                if state.in_image {
+                    state.text_buf.push(text.to_string());
+                } else if state.in_code || state.in_heading {
                     state.text_buf.push(text.to_string());
                 } else if state.in_bold {
                     state.spans.push(Span::Bold(text.to_string()));
@@ -133,6 +136,18 @@ pub fn parse_blocks(markdown: &str) -> Vec<Block> {
                     state.text_buf.push(" ".to_string());
                 } else {
                     state.spans.push(Span::Plain(" ".to_string()));
+                }
+            }
+            Event::Start(Tag::Image { dest_url, .. }) => {
+                state.in_image = true;
+                state.image_dest = Some(dest_url.to_string());
+                state.text_buf.clear();
+            }
+            Event::End(TagEnd::Image) => {
+                state.in_image = false;
+                if let Some(dest) = state.image_dest.take() {
+                    let alt: String = state.text_buf.drain(..).collect();
+                    blocks.push(Block::Image { path: dest, alt });
                 }
             }
             Event::Rule => {
@@ -169,4 +184,6 @@ struct ParseState {
     text_buf: Vec<String>,
     spans: Vec<Span>,
     list_items: Vec<ListItem>,
+    in_image: bool,
+    image_dest: Option<String>,
 }

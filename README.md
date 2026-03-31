@@ -15,6 +15,7 @@ A tiny, single-binary presentation tool written in Rust. Render Markdown slides 
 - **Centered slides** - `<!-- layout: center -->` directive
 - **Speaker notes** - `<!-- note: your note -->`, visible in presenter mode
 - **Presenter mode** (`p`) - current slide + next preview + notes + timer
+- **Dual-screen mode** - `--present` on your laptop, `--follow` on the projector
 - **10 animated backgrounds** - mathematical screensavers for your title slide
 - **Slide transitions** - glitch and fade effects
 - **2 themes** - `hacker` (default) and `minimal`
@@ -40,6 +41,20 @@ Grab a prebuilt binary from [Releases](https://github.com/thijsvos/deck/releases
 ```bash
 deck examples/demo.md
 ```
+
+## Dual-Screen Presenting
+
+Use two terminals for real presentations with a projector:
+
+```bash
+# Terminal 1 — drag to projector/external display
+deck talk.md --follow
+
+# Terminal 2 — your laptop screen
+deck talk.md --present
+```
+
+The `--present` terminal shows the presenter view (notes, timer, next slide preview) and controls navigation. The `--follow` terminal shows full-screen slides and follows along automatically. Synced via a tiny temp file — no server, no networking.
 
 ## Writing Slides
 

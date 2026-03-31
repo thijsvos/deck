@@ -1,3 +1,6 @@
+use std::path::Path;
+use std::time::Instant;
+
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout as RLayout, Rect},
     text::{Line, Span as RSpan},
@@ -5,12 +8,24 @@ use ratatui::{
     Frame,
 };
 
-use crate::app::App;
+use crate::image_renderer::{DeferredImage, ImageCache, ImageProtocol};
+use crate::parse::Deck;
 use crate::render;
+use crate::theme::Theme;
 
-pub fn render_presenter(frame: &mut Frame, area: Rect, app: &App) {
-    let theme = &app.theme;
-
+pub fn render_presenter(
+    frame: &mut Frame,
+    area: Rect,
+    deck: &Deck,
+    slide_index: usize,
+    reveal_count: usize,
+    theme: &Theme,
+    timer: &Instant,
+    protocol: ImageProtocol,
+    image_cache: &mut ImageCache,
+    deferred: &mut Vec<DeferredImage>,
+    base_dir: &Path,
+) {
     // Top 70% for slides, bottom 30% for notes/timer
     let rows = RLayout::default()
         .direction(Direction::Vertical)
@@ -37,8 +52,8 @@ pub fn render_presenter(frame: &mut Frame, area: Rect, app: &App) {
     let inner = current_border.inner(cols[0]);
     frame.render_widget(current_border, cols[0]);
 
-    let slide = &app.deck.slides[app.slide_index];
-    render::render_slide(frame, inner, slide, theme, app.reveal_count);
+    let slide = &deck.slides[slide_index];
+    render::render_slide(frame, inner, slide, theme, reveal_count, protocol, image_cache, deferred, base_dir);
 
     // -- Next slide preview --
     let next_border = WidgetBlock::default()
@@ -48,8 +63,8 @@ pub fn render_presenter(frame: &mut Frame, area: Rect, app: &App) {
     let inner = next_border.inner(cols[1]);
     frame.render_widget(next_border, cols[1]);
 
-    if let Some(next_slide) = app.deck.slides.get(app.slide_index + 1) {
-        render::render_slide(frame, inner, next_slide, theme, usize::MAX);
+    if let Some(next_slide) = deck.slides.get(slide_index + 1) {
+        render::render_slide(frame, inner, next_slide, theme, usize::MAX, protocol, image_cache, deferred, base_dir);
     } else {
         let msg = Line::from(RSpan::styled("  End of deck", theme.rule_style()));
         frame.render_widget(Paragraph::new(msg), inner);
@@ -75,7 +90,7 @@ pub fn render_presenter(frame: &mut Frame, area: Rect, app: &App) {
     }
 
     // -- Timer --
-    let elapsed = app.timer.elapsed().as_secs();
+    let elapsed = timer.elapsed().as_secs();
     let mins = elapsed / 60;
     let secs = elapsed % 60;
     let timer_text = format!("{:02}:{:02}", mins, secs);

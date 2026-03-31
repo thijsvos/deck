@@ -1,15 +1,18 @@
 mod app;
 mod background;
 mod bigtext;
+mod image_renderer;
 mod input;
 mod markdown;
 mod parse;
 mod render;
 mod render_presenter;
+mod sync;
 mod theme;
 mod transition;
 
-use std::io;
+use std::io::{self, Write};
+use std::path::Path;
 use std::time::Duration;
 
 use clap::Parser;
@@ -23,6 +26,7 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 
 use crate::app::App;
 use crate::parse::parse_deck;
+use crate::sync::SyncFile;
 use crate::theme::{Theme, ThemeName};
 
 #[derive(Parser)]
@@ -34,6 +38,14 @@ struct Cli {
     /// Theme: hacker (default) or minimal
     #[arg(long)]
     theme: Option<String>,
+
+    /// Presenter screen: shows notes + timer, controls navigation. Syncs to --follow instances.
+    #[arg(long, conflicts_with = "follow")]
+    present: bool,
+
+    /// Audience screen: full-screen slides that follow a --present instance.
+    #[arg(long, conflicts_with = "present")]
+    follow: bool,
 }
 
 fn main() -> io::Result<()> {
@@ -63,7 +75,24 @@ fn main() -> io::Result<()> {
         .unwrap_or(deck.meta.theme.clone());
 
     let theme = Theme::from_name(&theme_name);
-    let mut app = App::new(deck, theme);
+    let protocol = image_renderer::detect_protocol();
+    let base_dir = Path::new(&cli.file)
+        .parent()
+        .unwrap_or(Path::new("."))
+        .to_path_buf();
+
+    let sync = if cli.present || cli.follow {
+        Some(SyncFile::for_file(&cli.file))
+    } else {
+        None
+    };
+
+    let mut app = App::new(deck, theme, sync, cli.follow, protocol, base_dir);
+
+    // Start in presenter mode when --present is used
+    if cli.present {
+        app.mode = crate::app::Mode::Presenter;
+    }
 
     // Clean terminal restore on panic
     let default_panic = std::panic::take_hook();
@@ -82,10 +111,16 @@ fn main() -> io::Result<()> {
     loop {
         terminal.draw(|frame| app.draw(frame))?;
 
+        // Flush deferred Kitty/Sixel images after ratatui has written its buffer
+        if !app.deferred_images.is_empty() {
+            image_renderer::flush_deferred(terminal.backend_mut(), &app.deferred_images)?;
+            terminal.backend_mut().flush()?;
+        }
+
         let timeout = if app.transition.is_some() {
             Duration::from_millis(16)  // 60fps during transitions
-        } else if app.has_active_background() {
-            Duration::from_millis(33)  // ~30fps for background animation
+        } else if app.has_active_background() || app.is_follower {
+            Duration::from_millis(33)  // ~30fps for backgrounds or sync polling
         } else {
             Duration::from_millis(100) // low CPU when idle
         };
@@ -100,6 +135,9 @@ fn main() -> io::Result<()> {
 
         app.tick();
     }
+
+    // Clean up sync file
+    app.cleanup_sync();
 
     disable_raw_mode()?;
     execute!(io::stdout(), LeaveAlternateScreen, Show)?;

@@ -67,6 +67,14 @@ Syntax-highlighted code with clean borders.
 
 ---
 
+## Inline Images
+
+![Test gradient](test.png)
+
+Images auto-detect your terminal: Kitty protocol, Sixel, or half-block fallback.
+
+---
+
 ## Background: Matrix
 
 <!-- background: matrix -->

@@ -373,3 +373,196 @@ fn render_goto(frame: &mut Frame, area: Rect, input: &str, theme: &Theme) {
     let paragraph = Paragraph::new(RSpan::styled(text, theme.body_style())).block(block);
     frame.render_widget(paragraph, rect);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::markdown::{Block, ListItem, Span};
+    use crate::parse::{Deck, DeckMeta, Layout, Slide};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    fn dummy_slide(blocks: Vec<Block>) -> Slide {
+        Slide {
+            blocks,
+            layout: Layout::Default,
+            columns: None,
+            notes: vec![],
+            background: None,
+        }
+    }
+
+    fn bullet_list(n: usize) -> Block {
+        Block::BulletList {
+            items: (0..n)
+                .map(|i| ListItem {
+                    spans: vec![Span::Plain(format!("item {}", i))],
+                })
+                .collect(),
+        }
+    }
+
+    fn make_deck(slides: Vec<Slide>) -> Deck {
+        Deck {
+            meta: DeckMeta::default(),
+            slides,
+        }
+    }
+
+    fn make_app(slides: Vec<Slide>) -> App {
+        let deck = make_deck(slides);
+        let theme = Theme::from_name(&crate::theme::ThemeName::Hacker);
+        App::new(deck, theme, None, false, ImageProtocol::HalfBlocks, std::path::PathBuf::from("."))
+    }
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    // T1-T3: count_bullets
+    #[test]
+    fn count_bullets_empty_slide() {
+        let slide = dummy_slide(vec![]);
+        assert_eq!(count_bullets(&slide), 0);
+    }
+
+    #[test]
+    fn count_bullets_ignores_numbered_lists() {
+        let slide = dummy_slide(vec![
+            bullet_list(3),
+            Block::NumberedList {
+                items: vec![ListItem { spans: vec![Span::Plain("x".into())] }],
+            },
+        ]);
+        assert_eq!(count_bullets(&slide), 3);
+    }
+
+    #[test]
+    fn count_bullets_sums_multiple_lists() {
+        let slide = dummy_slide(vec![bullet_list(2), bullet_list(3)]);
+        assert_eq!(count_bullets(&slide), 5);
+    }
+
+    // T4-T5: initial_reveal
+    #[test]
+    fn initial_reveal_with_bullets_returns_zero() {
+        let slide = dummy_slide(vec![bullet_list(3)]);
+        assert_eq!(initial_reveal(&slide), 0);
+    }
+
+    #[test]
+    fn initial_reveal_without_bullets_returns_max() {
+        let slide = dummy_slide(vec![Block::Heading { level: 1, text: "Hi".into() }]);
+        assert_eq!(initial_reveal(&slide), usize::MAX);
+    }
+
+    // T6-T8: advance
+    #[test]
+    fn advance_reveals_next_bullet() {
+        let mut app = make_app(vec![dummy_slide(vec![bullet_list(3)])]);
+        assert_eq!(app.reveal_count, 0);
+        app.advance();
+        assert_eq!(app.reveal_count, 1);
+        app.advance();
+        assert_eq!(app.reveal_count, 2);
+    }
+
+    #[test]
+    fn advance_moves_to_next_slide_when_all_revealed() {
+        let mut app = make_app(vec![
+            dummy_slide(vec![bullet_list(1)]),
+            dummy_slide(vec![Block::Heading { level: 1, text: "Two".into() }]),
+        ]);
+        app.advance(); // reveal bullet
+        assert_eq!(app.slide_index, 0);
+        app.advance(); // all revealed -> next slide
+        assert_eq!(app.slide_index, 1);
+    }
+
+    #[test]
+    fn advance_stays_on_last_slide() {
+        let mut app = make_app(vec![dummy_slide(vec![Block::Heading { level: 1, text: "Only".into() }])]);
+        app.advance();
+        assert_eq!(app.slide_index, 0);
+    }
+
+    // T9-T11: go_back
+    #[test]
+    fn go_back_hides_last_bullet() {
+        let mut app = make_app(vec![dummy_slide(vec![bullet_list(3)])]);
+        app.advance();
+        app.advance();
+        assert_eq!(app.reveal_count, 2);
+        app.go_back();
+        assert_eq!(app.reveal_count, 1);
+    }
+
+    #[test]
+    fn go_back_moves_to_previous_slide() {
+        let mut app = make_app(vec![
+            dummy_slide(vec![bullet_list(1)]),
+            dummy_slide(vec![Block::Heading { level: 1, text: "Two".into() }]),
+        ]);
+        app.advance(); // reveal bullet
+        app.advance(); // next slide
+        assert_eq!(app.slide_index, 1);
+        app.go_back();
+        assert_eq!(app.slide_index, 0);
+        assert_eq!(app.reveal_count, 1); // previous slide fully revealed
+    }
+
+    #[test]
+    fn go_back_stays_on_first_slide() {
+        let mut app = make_app(vec![dummy_slide(vec![Block::Heading { level: 1, text: "First".into() }])]);
+        app.go_back();
+        assert_eq!(app.slide_index, 0);
+    }
+
+    // T12-T14: go_to
+    #[test]
+    fn go_to_jumps_to_valid_index() {
+        let mut app = make_app(vec![
+            dummy_slide(vec![]),
+            dummy_slide(vec![]),
+            dummy_slide(vec![]),
+        ]);
+        app.go_to(2);
+        assert_eq!(app.slide_index, 2);
+    }
+
+    #[test]
+    fn go_to_clamps_out_of_bounds() {
+        let mut app = make_app(vec![dummy_slide(vec![]), dummy_slide(vec![])]);
+        app.go_to(100);
+        assert_eq!(app.slide_index, 1);
+    }
+
+    #[test]
+    fn go_to_noop_when_already_there() {
+        let mut app = make_app(vec![dummy_slide(vec![]), dummy_slide(vec![])]);
+        app.go_to(0);
+        assert!(app.transition.is_none()); // no transition for same-slide
+    }
+
+    // T15-T17: handle_key
+    #[test]
+    fn handle_key_quit_returns_true() {
+        let mut app = make_app(vec![dummy_slide(vec![])]);
+        assert!(app.handle_key(key(KeyCode::Char('q'))));
+    }
+
+    #[test]
+    fn handle_key_quit_closes_help_first() {
+        let mut app = make_app(vec![dummy_slide(vec![])]);
+        app.show_help = true;
+        assert!(!app.handle_key(key(KeyCode::Char('q')))); // closes help, doesn't quit
+        assert!(!app.show_help);
+    }
+
+    #[test]
+    fn handle_key_follower_ignores_navigation() {
+        let mut app = make_app(vec![dummy_slide(vec![]), dummy_slide(vec![])]);
+        app.is_follower = true;
+        assert!(!app.handle_key(key(KeyCode::Right))); // ignored
+        assert_eq!(app.slide_index, 0); // didn't move
+    }
+}

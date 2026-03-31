@@ -262,3 +262,78 @@ fn render_sixel_fallback<W: Write>(w: &mut W, d: &DeferredImage) -> std::io::Res
     write!(w, "\x1b[0m")?;
     w.flush()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_image(w: u32, h: u32) -> RgbaImage {
+        RgbaImage::new(w, h)
+    }
+
+    #[test]
+    fn resize_wide_image_scales_down() {
+        let img = make_image(200, 50);
+        let resized = resize_to_fit(&img, 100, 50);
+        assert!(resized.width() <= 100);
+    }
+
+    #[test]
+    fn resize_tall_image_scales_down() {
+        let img = make_image(50, 200);
+        let resized = resize_to_fit(&img, 100, 25); // 25 rows = 50px tall
+        assert!(resized.height() <= 50);
+    }
+
+    #[test]
+    fn resize_preserves_aspect_ratio() {
+        let img = make_image(200, 100);
+        let resized = resize_to_fit(&img, 100, 100);
+        // 200:100 = 2:1 ratio. Fitting into 100 cols x 200 px tall -> limited by width
+        // Result: 100 x 50 (maintaining 2:1)
+        let ratio_orig = 200.0 / 100.0;
+        let ratio_new = resized.width() as f64 / resized.height() as f64;
+        assert!((ratio_orig - ratio_new).abs() < 0.1);
+    }
+
+    #[test]
+    fn resize_forces_even_height() {
+        let img = make_image(100, 51);
+        let resized = resize_to_fit(&img, 100, 50);
+        assert_eq!(resized.height() % 2, 0);
+    }
+
+    #[test]
+    fn resize_zero_dimension_returns_clone() {
+        let img = make_image(0, 0);
+        let resized = resize_to_fit(&img, 100, 50);
+        assert_eq!(resized.dimensions(), (0, 0));
+    }
+
+    #[test]
+    fn resize_small_image_upscales() {
+        let img = make_image(10, 10);
+        let resized = resize_to_fit(&img, 100, 50);
+        assert!(resized.width() > 10);
+    }
+
+    #[test]
+    fn detect_protocol_fallback() {
+        // In test environment, none of the terminal-specific env vars should be set
+        // unless running inside Kitty/Ghostty/etc. Just verify it doesn't panic.
+        let _protocol = detect_protocol();
+    }
+
+    #[test]
+    fn image_cache_new_is_empty() {
+        let cache = ImageCache::new();
+        assert!(cache.originals.is_empty());
+        assert!(cache.resized.is_empty());
+    }
+
+    #[test]
+    fn image_cache_missing_file_returns_none() {
+        let mut cache = ImageCache::new();
+        assert!(cache.get_resized("nonexistent.png", Path::new("."), 80, 24).is_none());
+    }
+}

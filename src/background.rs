@@ -549,3 +549,130 @@ fn apply_orbit(frame: &mut Frame, area: Rect, time: f64, theme: &Theme) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::style::Color;
+
+    fn hacker_theme() -> Theme {
+        Theme::from_name(&crate::theme::ThemeName::Hacker)
+    }
+
+    fn minimal_theme() -> Theme {
+        Theme::from_name(&crate::theme::ThemeName::Minimal)
+    }
+
+    #[test]
+    fn hash2_deterministic() {
+        assert_eq!(hash2(42, 7), hash2(42, 7));
+    }
+
+    #[test]
+    fn hash2_different_inputs_differ() {
+        assert_ne!(hash2(1, 2), hash2(2, 1));
+        assert_ne!(hash2(0, 0), hash2(0, 1));
+    }
+
+    #[test]
+    fn hash2_max_no_panic() {
+        // Wrapping arithmetic should handle extreme values
+        let _ = hash2(u64::MAX, u64::MAX);
+    }
+
+    #[test]
+    fn shade_color_rgb_theme_dims() {
+        let t = hacker_theme();
+        match shade_color(&t, 1.0) {
+            Color::Rgb(r, g, b) => {
+                assert_eq!(r, 0);
+                assert!(g > 50 && g < 120);
+                assert!(b > 10 && b < 40);
+            }
+            _ => panic!("expected Rgb"),
+        }
+    }
+
+    #[test]
+    fn shade_color_zero_brightness_is_black() {
+        let t = hacker_theme();
+        assert!(matches!(shade_color(&t, 0.0), Color::Rgb(0, 0, 0)));
+    }
+
+    #[test]
+    fn shade_color_non_rgb_produces_grayscale() {
+        let t = minimal_theme();
+        match shade_color(&t, 1.0) {
+            Color::Rgb(r, g, b) => {
+                assert_eq!(r, g);
+                assert_eq!(g, b);
+                assert!(r <= 50);
+            }
+            _ => panic!("expected Rgb"),
+        }
+    }
+
+    #[test]
+    fn shade_color_clamps_brightness() {
+        let t = hacker_theme();
+        let neg = shade_color(&t, -1.0);
+        let zero = shade_color(&t, 0.0);
+        assert_eq!(neg, zero);
+        let over = shade_color(&t, 5.0);
+        let one = shade_color(&t, 1.0);
+        assert_eq!(over, one);
+    }
+
+    #[test]
+    fn value_noise_deterministic() {
+        assert_eq!(value_noise(1.5, 2.3), value_noise(1.5, 2.3));
+    }
+
+    #[test]
+    fn value_noise_in_range() {
+        for i in 0..100 {
+            let v = value_noise(i as f64 * 0.1, i as f64 * 0.2);
+            assert!(v >= 0.0 && v <= 1.0, "noise({}) = {}", i, v);
+        }
+    }
+
+    fn check_cell_fn(f: fn(u16, u16, u16, u16, f64) -> (char, f64), name: &str) {
+        let (c1, b1) = f(10, 5, 80, 24, 1.0);
+        let (c2, b2) = f(10, 5, 80, 24, 1.0);
+        assert_eq!(c1, c2, "{} not deterministic (char)", name);
+        assert_eq!(b1, b2, "{} not deterministic (brightness)", name);
+        for x in (0..80).step_by(10) {
+            for y in (0..24).step_by(6) {
+                let (_, b) = f(x, y, 80, 24, 0.5);
+                assert!(b >= 0.0 && b <= 1.0, "{} brightness {} out of range", name, b);
+            }
+        }
+    }
+
+    #[test]
+    fn matrix_cell_valid() { check_cell_fn(matrix_cell, "matrix"); }
+    #[test]
+    fn plasma_cell_valid() { check_cell_fn(plasma_cell, "plasma"); }
+    #[test]
+    fn spiral_cell_valid() { check_cell_fn(spiral_cell, "spiral"); }
+    #[test]
+    fn wave_cell_valid() { check_cell_fn(wave_cell, "wave"); }
+    #[test]
+    fn aurora_cell_valid() { check_cell_fn(aurora_cell, "aurora"); }
+    #[test]
+    fn rain_cell_valid() { check_cell_fn(rain_cell, "rain"); }
+    #[test]
+    fn noise_cell_valid() { check_cell_fn(noise_cell, "noise"); }
+    #[test]
+    fn lattice_cell_valid() { check_cell_fn(lattice_cell, "lattice"); }
+
+    #[test]
+    fn compute_cell_dispatches() {
+        let (_, b) = compute_cell(&BackgroundKind::Matrix, 5, 5, 80, 24, 1.0);
+        let (_, b2) = matrix_cell(5, 5, 80, 24, 1.0);
+        assert_eq!(b, b2);
+        let (ch, b) = compute_cell(&BackgroundKind::Lissajous, 5, 5, 80, 24, 1.0);
+        assert_eq!(ch, ' ');
+        assert_eq!(b, 0.0);
+    }
+}

@@ -152,3 +152,57 @@ impl Theme {
         Style::default().fg(self.accent).bg(self.bg)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hacker_theme_properties() {
+        let t = Theme::from_name(&ThemeName::Hacker);
+        assert_eq!(t.bullet, ">");
+        assert!(matches!(t.font, FontStyle::Block));
+        assert!(matches!(t.default_transition, TransitionKind::Glitch));
+        assert!(matches!(t.bg, Color::Rgb(10, 10, 20)));
+    }
+
+    #[test]
+    fn corporate_theme_properties() {
+        let t = Theme::from_name(&ThemeName::Corporate);
+        assert_eq!(t.bullet, "•");
+        assert!(matches!(t.font, FontStyle::Large));
+        assert!(matches!(t.default_transition, TransitionKind::Wipe));
+    }
+
+    #[test]
+    fn catppuccin_theme_properties() {
+        let t = Theme::from_name(&ThemeName::Catppuccin);
+        assert_eq!(t.bullet, "◆");
+        assert!(matches!(t.font, FontStyle::Block));
+        assert!(matches!(t.default_transition, TransitionKind::Dissolve));
+    }
+
+    #[test]
+    fn minimal_theme_properties() {
+        let t = Theme::from_name(&ThemeName::Minimal);
+        assert_eq!(t.bullet, "·");
+        assert!(matches!(t.font, FontStyle::Large));
+        assert!(matches!(t.default_transition, TransitionKind::Fade));
+        assert!(matches!(t.bg, Color::Reset));
+    }
+
+    #[test]
+    fn h1_style_is_bold() {
+        let t = Theme::from_name(&ThemeName::Hacker);
+        let style = t.h1_style();
+        assert!(style.add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn body_style_has_fg_and_bg() {
+        let t = Theme::from_name(&ThemeName::Hacker);
+        let style = t.body_style();
+        assert_eq!(style.fg, Some(t.fg));
+        assert_eq!(style.bg, Some(t.bg));
+    }
+}

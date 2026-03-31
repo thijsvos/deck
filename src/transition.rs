@@ -147,3 +147,62 @@ pub fn apply_transition(frame: &mut Frame, area: Rect, state: &TransitionState, 
         TransitionKind::None => {}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transition_state_new_stores_kind() {
+        let t = TransitionState::new(TransitionKind::Glitch);
+        assert!(matches!(t.kind, TransitionKind::Glitch));
+        assert_eq!(t.duration, Duration::from_millis(400));
+    }
+
+    #[test]
+    fn transition_not_done_immediately() {
+        let t = TransitionState::new(TransitionKind::Fade);
+        assert!(!t.is_done());
+    }
+
+    #[test]
+    fn transition_done_after_zero_duration() {
+        let mut t = TransitionState::new(TransitionKind::Wipe);
+        t.duration = Duration::ZERO;
+        assert!(t.is_done());
+    }
+
+    #[test]
+    fn rng_deterministic() {
+        let mut a = Rng::new(42);
+        let mut b = Rng::new(42);
+        for _ in 0..100 {
+            assert_eq!(a.next(), b.next());
+        }
+    }
+
+    #[test]
+    fn rng_different_seeds_differ() {
+        let mut a = Rng::new(1);
+        let mut b = Rng::new(2);
+        assert_ne!(a.next(), b.next());
+    }
+
+    #[test]
+    fn rng_next_f64_in_range() {
+        let mut rng = Rng::new(123);
+        for _ in 0..1000 {
+            let v = rng.next_f64();
+            assert!(v >= 0.0 && v < 1.0, "got {}", v);
+        }
+    }
+
+    #[test]
+    fn rng_zero_seed_not_stuck() {
+        let mut rng = Rng::new(0);
+        let first = rng.next();
+        let second = rng.next();
+        assert_ne!(first, 0);
+        assert_ne!(first, second);
+    }
+}

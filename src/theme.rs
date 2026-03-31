@@ -8,6 +8,7 @@ pub enum ThemeName {
     Hacker,
     Minimal,
     Corporate,
+    Catppuccin,
 }
 
 pub struct Theme {
@@ -29,6 +30,7 @@ impl Theme {
             ThemeName::Hacker => Self::hacker(),
             ThemeName::Minimal => Self::minimal(),
             ThemeName::Corporate => Self::corporate(),
+            ThemeName::Catppuccin => Self::catppuccin(),
         }
     }
 
@@ -44,6 +46,22 @@ impl Theme {
             bold: Color::Rgb(255, 255, 100),
             italic: Color::Rgb(150, 150, 255),
             bullet: ">",
+        }
+    }
+
+    fn catppuccin() -> Self {
+        // Catppuccin Mocha palette
+        Self {
+            bg: Color::Rgb(30, 30, 46),       // Base
+            fg: Color::Rgb(205, 214, 244),     // Text
+            heading: Color::Rgb(137, 180, 250), // Blue
+            accent: Color::Rgb(245, 194, 231),  // Pink
+            dim: Color::Rgb(88, 91, 112),      // Overlay0
+            code_bg: Color::Rgb(49, 50, 68),   // Surface0
+            code_fg: Color::Rgb(166, 173, 200), // Subtext0
+            bold: Color::Rgb(250, 179, 135),    // Peach
+            italic: Color::Rgb(180, 190, 254),  // Lavender
+            bullet: "◆",
         }
     }
 

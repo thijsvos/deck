@@ -18,7 +18,7 @@ A tiny, single-binary presentation tool written in Rust. Render Markdown slides 
 - **Dual-screen mode** - `--present` on your laptop, `--follow` on the projector
 - **10 animated backgrounds** - mathematical screensavers for your title slide
 - **Slide transitions** - glitch and fade effects
-- **3 themes** - `hacker` (default), `corporate`, and `minimal`
+- **4 themes** - `hacker` (default), `corporate`, `catppuccin`, and `minimal`
 - **Vim-style navigation** - arrow keys, hjkl, go-to-slide
 
 ## Installation
@@ -105,7 +105,7 @@ Right content here
 |-------|--------|---------|
 | `title` | Any string | `"Untitled"` |
 | `author` | Any string | - |
-| `theme` | `"hacker"`, `"corporate"`, `"minimal"` | `"hacker"` |
+| `theme` | `"hacker"`, `"corporate"`, `"catppuccin"`, `"minimal"` | `"hacker"` |
 | `transition` | `"none"`, `"glitch"`, `"fade"` | `"none"` |
 | `background` | See backgrounds below | - |
 
@@ -158,6 +158,7 @@ Use `--theme corporate` or set `theme = "corporate"` in frontmatter.
 
 - **hacker** (default) - Dark background, matrix green, neon pink accents, cyan headings
 - **corporate** - Deep navy background, blue headings, gold accents — for business meetings
+- **catppuccin** - Catppuccin Mocha palette — pastel pink accents, blue headings, peach bold
 - **minimal** - Terminal default background, white text, yellow accents
 
 ## License

@@ -102,7 +102,7 @@ pub fn resize_to_fit(img: &RgbaImage, max_cols: u16, max_rows: u16) -> RgbaImage
 
     let scale_w = max_px_w as f64 / orig_w as f64;
     let scale_h = max_px_h as f64 / orig_h as f64;
-    let scale = scale_w.min(scale_h).min(1.0); // never upscale
+    let scale = scale_w.min(scale_h); // allow upscaling to fill the slide
 
     let new_w = ((orig_w as f64 * scale).round() as u32).max(1);
     let mut new_h = ((orig_h as f64 * scale).round() as u32).max(1);
@@ -112,7 +112,7 @@ pub fn resize_to_fit(img: &RgbaImage, max_cols: u16, max_rows: u16) -> RgbaImage
         new_h += 1;
     }
 
-    image::imageops::resize(img, new_w, new_h, FilterType::Triangle)
+    image::imageops::resize(img, new_w, new_h, FilterType::Lanczos3)
 }
 
 /// Render image as half-block characters directly into the ratatui buffer.

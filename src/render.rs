@@ -348,7 +348,7 @@ fn estimate_height(blocks: &[Block], width: u16) -> u16 {
     blocks
         .iter()
         .map(|b| match b {
-            Block::Heading { level: 1, .. } => 6,
+            Block::Heading { level: 1, .. } => 8, // 5-7 row font + spacing
             Block::Heading { .. } => 2,
             Block::Paragraph { spans } => {
                 let text_len: usize = spans

@@ -86,7 +86,7 @@ impl Theme {
             bold: Color::Rgb(245, 248, 255),
             italic: Color::Rgb(150, 175, 215),
             bullet: "•",
-            font: FontStyle::Thin,
+            font: FontStyle::Large,
             default_transition: TransitionKind::Wipe,
         }
     }
@@ -103,7 +103,7 @@ impl Theme {
             bold: Color::White,
             italic: Color::Gray,
             bullet: "·",
-            font: FontStyle::Thin,
+            font: FontStyle::Large,
             default_transition: TransitionKind::Fade,
         }
     }

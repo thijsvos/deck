@@ -2,7 +2,6 @@
 title = "Welcome to Deck"
 author = "deck"
 theme = "hacker"
-transition = "glitch"
 background = "aurora"
 ---
 
@@ -69,7 +68,7 @@ Syntax-highlighted code with clean borders.
 
 ## Inline Images
 
-![Test gradient](test.png)
+![](test2.png)
 
 Images auto-detect your terminal: Kitty protocol, Sixel, or half-block fallback.
 

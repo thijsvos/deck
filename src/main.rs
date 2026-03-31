@@ -35,7 +35,7 @@ struct Cli {
     /// Markdown file to present
     file: String,
 
-    /// Theme: hacker (default) or minimal
+    /// Theme: hacker (default), minimal, or corporate
     #[arg(long)]
     theme: Option<String>,
 
@@ -70,6 +70,7 @@ fn main() -> io::Result<()> {
         .as_deref()
         .map(|t| match t {
             "minimal" => ThemeName::Minimal,
+            "corporate" => ThemeName::Corporate,
             _ => ThemeName::Hacker,
         })
         .unwrap_or(deck.meta.theme.clone());

@@ -7,6 +7,7 @@ pub enum ThemeName {
     #[default]
     Hacker,
     Minimal,
+    Corporate,
 }
 
 pub struct Theme {
@@ -27,6 +28,7 @@ impl Theme {
         match name {
             ThemeName::Hacker => Self::hacker(),
             ThemeName::Minimal => Self::minimal(),
+            ThemeName::Corporate => Self::corporate(),
         }
     }
 
@@ -42,6 +44,21 @@ impl Theme {
             bold: Color::Rgb(255, 255, 100),
             italic: Color::Rgb(150, 150, 255),
             bullet: ">",
+        }
+    }
+
+    fn corporate() -> Self {
+        Self {
+            bg: Color::Rgb(20, 25, 40),
+            fg: Color::Rgb(215, 220, 230),
+            heading: Color::Rgb(100, 170, 255),
+            accent: Color::Rgb(230, 185, 55),
+            dim: Color::Rgb(70, 78, 95),
+            code_bg: Color::Rgb(28, 34, 52),
+            code_fg: Color::Rgb(195, 200, 210),
+            bold: Color::Rgb(245, 248, 255),
+            italic: Color::Rgb(150, 175, 215),
+            bullet: "•",
         }
     }
 

@@ -291,3 +291,76 @@ fn extract_background(raw: &str) -> (String, Option<BackgroundKind>) {
 
     (cleaned, bg)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_frontmatter_toml() {
+        let input = "---\ntitle = \"Hello\"\ntheme = \"minimal\"\n---\n# Slide 1";
+        let deck = parse_deck(input);
+        assert_eq!(deck.meta.title, "Hello");
+        assert!(matches!(deck.meta.theme, ThemeName::Minimal));
+        assert_eq!(deck.slides.len(), 1);
+    }
+
+    #[test]
+    fn parse_frontmatter_defaults() {
+        let input = "# Just a slide";
+        let deck = parse_deck(input);
+        assert_eq!(deck.meta.title, "Untitled");
+        assert!(matches!(deck.meta.theme, ThemeName::Hacker));
+    }
+
+    #[test]
+    fn split_slides_on_separator() {
+        let input = "# One\n\n---\n\n# Two\n\n---\n\n# Three";
+        let deck = parse_deck(input);
+        assert_eq!(deck.slides.len(), 3);
+    }
+
+    #[test]
+    fn empty_slides_filtered() {
+        let input = "---\ntitle = \"T\"\n---\n\n---\n\n# Real slide";
+        let deck = parse_deck(input);
+        assert_eq!(deck.slides.len(), 1);
+    }
+
+    #[test]
+    fn extract_speaker_notes() {
+        let input = "# Slide\n\n- Point\n\n<!-- note: Remember this -->";
+        let deck = parse_deck(input);
+        assert_eq!(deck.slides[0].notes, vec!["Remember this"]);
+    }
+
+    #[test]
+    fn extract_background_directive() {
+        let input = "<!-- background: matrix -->\n\n# Title";
+        let deck = parse_deck(input);
+        assert!(deck.slides[0].background.is_some());
+    }
+
+    #[test]
+    fn center_layout_detected() {
+        let input = "<!-- layout: center -->\n\n# Centered";
+        let deck = parse_deck(input);
+        assert!(matches!(deck.slides[0].layout, Layout::Center));
+    }
+
+    #[test]
+    fn column_layout_parsed() {
+        let input = "## Title\n\n::: columns\n::: left\nLeft\n:::\n::: right\nRight\n:::\n:::";
+        let deck = parse_deck(input);
+        assert!(matches!(deck.slides[0].layout, Layout::Columns));
+        assert!(deck.slides[0].columns.is_some());
+    }
+
+    #[test]
+    fn frontmatter_background_applies_to_first_slide() {
+        let input = "---\nbackground = \"plasma\"\n---\n# First\n\n---\n\n# Second";
+        let deck = parse_deck(input);
+        assert!(deck.slides[0].background.is_some());
+        assert!(deck.slides[1].background.is_none());
+    }
+}

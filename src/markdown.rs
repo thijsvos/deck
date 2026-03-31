@@ -187,3 +187,104 @@ struct ParseState {
     in_image: bool,
     image_dest: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_heading() {
+        let blocks = parse_blocks("# Hello");
+        assert!(matches!(&blocks[0], Block::Heading { level: 1, text } if text == "Hello"));
+    }
+
+    #[test]
+    fn parse_h2_heading() {
+        let blocks = parse_blocks("## Sub");
+        assert!(matches!(&blocks[0], Block::Heading { level: 2, text } if text == "Sub"));
+    }
+
+    #[test]
+    fn parse_paragraph() {
+        let blocks = parse_blocks("Just some text");
+        assert!(matches!(&blocks[0], Block::Paragraph { spans } if !spans.is_empty()));
+    }
+
+    #[test]
+    fn parse_bold_span() {
+        let blocks = parse_blocks("**bold**");
+        if let Block::Paragraph { spans } = &blocks[0] {
+            assert!(matches!(&spans[0], Span::Bold(t) if t == "bold"));
+        } else {
+            panic!("expected paragraph");
+        }
+    }
+
+    #[test]
+    fn parse_italic_span() {
+        let blocks = parse_blocks("*italic*");
+        if let Block::Paragraph { spans } = &blocks[0] {
+            assert!(matches!(&spans[0], Span::Italic(t) if t == "italic"));
+        } else {
+            panic!("expected paragraph");
+        }
+    }
+
+    #[test]
+    fn parse_inline_code() {
+        let blocks = parse_blocks("`code`");
+        if let Block::Paragraph { spans } = &blocks[0] {
+            assert!(matches!(&spans[0], Span::Code(t) if t == "code"));
+        } else {
+            panic!("expected paragraph");
+        }
+    }
+
+    #[test]
+    fn parse_bullet_list() {
+        let blocks = parse_blocks("- One\n- Two\n- Three");
+        if let Block::BulletList { items } = &blocks[0] {
+            assert_eq!(items.len(), 3);
+        } else {
+            panic!("expected bullet list");
+        }
+    }
+
+    #[test]
+    fn parse_numbered_list() {
+        let blocks = parse_blocks("1. First\n2. Second");
+        if let Block::NumberedList { items } = &blocks[0] {
+            assert_eq!(items.len(), 2);
+        } else {
+            panic!("expected numbered list");
+        }
+    }
+
+    #[test]
+    fn parse_code_block() {
+        let blocks = parse_blocks("```rust\nfn main() {}\n```");
+        if let Block::CodeBlock { lang, code } = &blocks[0] {
+            assert_eq!(lang.as_deref(), Some("rust"));
+            assert!(code.contains("fn main"));
+        } else {
+            panic!("expected code block");
+        }
+    }
+
+    #[test]
+    fn parse_horizontal_rule() {
+        let blocks = parse_blocks("---");
+        assert!(matches!(&blocks[0], Block::HorizontalRule));
+    }
+
+    #[test]
+    fn parse_image() {
+        let blocks = parse_blocks("![alt text](./photo.png)");
+        if let Block::Image { path, alt } = &blocks[0] {
+            assert_eq!(path, "./photo.png");
+            assert_eq!(alt, "alt text");
+        } else {
+            panic!("expected image, got {:?}", blocks[0]);
+        }
+    }
+}

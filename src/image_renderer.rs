@@ -16,20 +16,32 @@ pub enum ImageProtocol {
     HalfBlocks,
 }
 
-/// Cached decoded images keyed by canonical path.
+/// Cached images keyed by (path, target_cols, target_rows).
+/// Stores already-resized images so resize only happens once per size.
 pub struct ImageCache {
-    decoded: HashMap<String, RgbaImage>,
+    /// Original decoded images keyed by path.
+    originals: HashMap<String, RgbaImage>,
+    /// Resized images keyed by (path, cols, rows).
+    resized: HashMap<(String, u16, u16), RgbaImage>,
 }
 
 impl ImageCache {
     pub fn new() -> Self {
         Self {
-            decoded: HashMap::new(),
+            originals: HashMap::new(),
+            resized: HashMap::new(),
         }
     }
 
-    /// Load and cache an image. Returns None if the file can't be read/decoded.
-    pub fn load(&mut self, src: &str, base_dir: &Path) -> Option<&RgbaImage> {
+    /// Load, resize, and cache an image for the given area dimensions.
+    /// Returns None if the file can't be read/decoded.
+    pub fn get_resized(
+        &mut self,
+        src: &str,
+        base_dir: &Path,
+        max_cols: u16,
+        max_rows: u16,
+    ) -> Option<&RgbaImage> {
         let full_path = if Path::new(src).is_absolute() {
             PathBuf::from(src)
         } else {
@@ -37,13 +49,22 @@ impl ImageCache {
         };
 
         let key = full_path.to_string_lossy().to_string();
+        let cache_key = (key.clone(), max_cols, max_rows);
 
-        if !self.decoded.contains_key(&key) {
-            let img = image::open(&full_path).ok()?;
-            self.decoded.insert(key.clone(), img.to_rgba8());
+        if self.resized.contains_key(&cache_key) {
+            return self.resized.get(&cache_key);
         }
 
-        self.decoded.get(&key)
+        // Decode original if not cached
+        if !self.originals.contains_key(&key) {
+            let img = image::open(&full_path).ok()?;
+            self.originals.insert(key.clone(), img.to_rgba8());
+        }
+
+        let original = self.originals.get(&key)?;
+        let resized = resize_to_fit(original, max_cols, max_rows);
+        self.resized.insert(cache_key.clone(), resized);
+        self.resized.get(&cache_key)
     }
 }
 

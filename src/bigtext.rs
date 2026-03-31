@@ -138,3 +138,46 @@ fn render_with<const N: usize>(
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn block_font_renders_5_rows() {
+        let lines = render("A", FontStyle::Block);
+        assert_eq!(lines.len(), 5);
+    }
+
+    #[test]
+    fn large_font_renders_7_rows() {
+        let lines = render("A", FontStyle::Large);
+        assert_eq!(lines.len(), 7);
+    }
+
+    #[test]
+    fn unknown_chars_fallback() {
+        let lines = render("🎉", FontStyle::Block);
+        assert_eq!(lines, vec!["🎉"]);
+    }
+
+    #[test]
+    fn space_produces_empty_glyph() {
+        assert!(glyph_block(' ').is_some());
+        assert!(glyph_large(' ').is_some());
+    }
+
+    #[test]
+    fn lowercase_uppercased() {
+        let lower = render("abc", FontStyle::Block);
+        let upper = render("ABC", FontStyle::Block);
+        assert_eq!(lower, upper);
+    }
+
+    #[test]
+    fn multi_char_joins_with_space() {
+        let lines = render("HI", FontStyle::Block);
+        // Each line should contain a space separator between H and I glyphs
+        assert!(lines[0].contains(' '));
+    }
+}

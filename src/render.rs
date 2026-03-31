@@ -271,11 +271,10 @@ fn render_block(
             2
         }
         Block::Image { path, alt } => {
-            // Load and resize image
-            let img = match image_cache.load(path, base_dir) {
-                Some(img) => img.clone(),
+            // Load, resize, and cache — only resizes once per (path, size)
+            let resized = match image_cache.get_resized(path, base_dir, area.width, area.height) {
+                Some(img) => img,
                 None => {
-                    // Fallback: show alt text
                     let label = if alt.is_empty() {
                         format!("[Image: {}]", path)
                     } else {
@@ -287,7 +286,6 @@ fn render_block(
                 }
             };
 
-            let resized = image_renderer::resize_to_fit(&img, area.width, area.height);
             let (px_w, px_h) = resized.dimensions();
             let consumed_rows = ((px_h + 1) / 2) as u16;
             let consumed_cols = px_w as u16;
@@ -303,7 +301,7 @@ fn render_block(
 
             // Always render half-blocks into the buffer
             let buf = frame.buffer_mut();
-            image_renderer::render_halfblocks(buf, img_area, &resized);
+            image_renderer::render_halfblocks(buf, img_area, resized);
 
             // Queue deferred high-res render for Kitty/Sixel
             if matches!(protocol, ImageProtocol::Kitty | ImageProtocol::Sixel) {
@@ -312,7 +310,7 @@ fn render_block(
                     y: img_area.y,
                     cols: consumed_cols,
                     rows: consumed_rows.min(area.height),
-                    rgba: resized,
+                    rgba: resized.clone(),
                     protocol,
                 });
             }

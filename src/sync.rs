@@ -50,3 +50,47 @@ fn simple_hash(s: &str) -> u64 {
     }
     h
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_read_roundtrip() {
+        let sync = SyncFile::for_file("/tmp/test-deck-roundtrip.md");
+        sync.write(5, 3);
+        let result = sync.read();
+        assert_eq!(result, Some((5, 3)));
+        sync.cleanup();
+    }
+
+    #[test]
+    fn read_missing_file_returns_none() {
+        let sync = SyncFile::for_file("/tmp/nonexistent-deck-test.md");
+        sync.cleanup(); // ensure clean state
+        assert_eq!(sync.read(), None);
+    }
+
+    #[test]
+    fn deterministic_path() {
+        let a = SyncFile::for_file("talk.md");
+        let b = SyncFile::for_file("talk.md");
+        assert_eq!(a.path, b.path);
+    }
+
+    #[test]
+    fn different_files_different_paths() {
+        let a = SyncFile::for_file("a.md");
+        let b = SyncFile::for_file("b.md");
+        assert_ne!(a.path, b.path);
+    }
+
+    #[test]
+    fn cleanup_removes_files() {
+        let sync = SyncFile::for_file("/tmp/test-deck-cleanup.md");
+        sync.write(0, 0);
+        assert!(sync.path.exists());
+        sync.cleanup();
+        assert!(!sync.path.exists());
+    }
+}

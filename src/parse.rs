@@ -208,7 +208,6 @@ fn extract_columns(raw: &str) -> Option<(String, String, String)> {
     let mut right = String::new();
     let mut in_left = false;
     let mut in_right = false;
-    let mut depth = 0;
 
     for line in &lines[col_start + 1..] {
         let trimmed = line.trim();
@@ -232,10 +231,7 @@ fn extract_columns(raw: &str) -> Option<(String, String, String)> {
                 in_right = false;
                 continue;
             }
-            if depth == 0 {
-                break;
-            }
-            depth -= 1;
+            break;
         }
 
         if in_left {

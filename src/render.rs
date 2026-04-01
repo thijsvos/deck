@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use unicode_width::UnicodeWidthStr;
+
 use ratatui::{
     layout::{Constraint, Direction, Layout as RLayout, Rect},
     style::Style,
@@ -22,7 +24,7 @@ pub struct RenderCtx<'a> {
     pub image_cache: &'a mut ImageCache,
     pub deferred: &'a mut Vec<DeferredImage>,
     pub base_dir: &'a Path,
-    pub highlighter: &'a Highlighter,
+    pub highlighter: &'a mut Highlighter,
     pub entrances: &'a mut EntranceTracker,
     pub slide_index: usize,
 }
@@ -110,7 +112,7 @@ pub fn render_status_bar(
     let right = format!(" {mins:02}:{secs:02} ");
 
     let width = area.width as usize;
-    let used = left.len() + center.len() + right.len();
+    let used = left.width() + center.width() + right.width();
     let pad = width.saturating_sub(used);
     let left_pad = pad / 2;
     let right_pad = pad.saturating_sub(left_pad);
@@ -174,17 +176,17 @@ fn render_blocks(
                         bullet_rect,
                     );
 
-                    // Cascade entrance for each bullet item
+                    // Cascade entrance: fixed 300ms animation per bullet, staggered start
                     let cascade_idx = block_idx * 100 + item_i;
-                    let stagger = std::time::Duration::from_millis(100 * item_i as u64);
+                    let stagger = std::time::Duration::from_millis(80 * item_i as u64);
+                    let anim_dur = std::time::Duration::from_millis(300);
                     if let Some(state) = ctx.entrances.get_or_start(
                         ctx.slide_index,
                         cascade_idx,
                         EntranceKind::Cascade,
-                        std::time::Duration::from_millis(200) + stagger,
+                        stagger + anim_dur,
                     ) {
                         let raw_progress = state.progress();
-                        // Account for stagger: animation doesn't visually start until stagger elapses
                         let stagger_frac =
                             stagger.as_secs_f64() / (state.duration.as_secs_f64().max(0.001));
                         let visual_progress =
@@ -351,7 +353,7 @@ fn render_block(
                 } else if i == visible_lines && visible_lines < total_lines {
                     // Partially typed current line
                     let full_text: String = hl.spans.iter().map(|s| s.content.as_ref()).collect();
-                    let chars_to_show = (char_frac * full_text.len() as f64) as usize;
+                    let chars_to_show = (char_frac * full_text.chars().count() as f64) as usize;
                     if chars_to_show == 0 {
                         // Just show cursor
                         lines.push(Line::from(RSpan::styled("▌", theme.status_accent())));
@@ -360,7 +362,7 @@ fn render_block(
                         let mut partial_spans: Vec<RSpan<'static>> = Vec::new();
                         let mut chars_left = chars_to_show;
                         for span in hl.spans {
-                            let span_len = span.content.len();
+                            let span_len = span.content.chars().count();
                             if chars_left >= span_len {
                                 partial_spans.push(span);
                                 chars_left -= span_len;
@@ -483,7 +485,7 @@ fn estimate_line_height(line: &Line, width: u16) -> u16 {
     if width == 0 {
         return 1;
     }
-    let text_width: usize = line.spans.iter().map(|s| s.content.len()).sum();
+    let text_width: usize = line.spans.iter().map(|s| s.content.width()).sum();
     let w = width as usize;
     text_width.div_ceil(w).max(1).min(u16::MAX as usize) as u16
 }
@@ -492,13 +494,15 @@ fn estimate_height(blocks: &[Block], width: u16) -> u16 {
     blocks
         .iter()
         .map(|b| match b {
-            Block::Heading { level: 1, .. } => 8, // 5-7 row font + spacing
+            Block::Heading { level: 1, .. } => 8, // max(Block=6, Large=8) for centering
             Block::Heading { .. } => 2,
             Block::Paragraph { spans } => {
                 let text_len: usize = spans
                     .iter()
                     .map(|s| match s {
-                        Span::Plain(t) | Span::Bold(t) | Span::Italic(t) | Span::Code(t) => t.len(),
+                        Span::Plain(t) | Span::Bold(t) | Span::Italic(t) | Span::Code(t) => {
+                            t.width()
+                        }
                     })
                     .sum();
                 let w = width.max(1) as usize;

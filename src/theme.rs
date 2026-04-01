@@ -109,9 +109,7 @@ impl Theme {
     }
 
     pub fn h1_style(&self) -> Style {
-        Style::default()
-            .fg(self.heading)
-            .add_modifier(Modifier::BOLD)
+        self.heading_style()
     }
 
     pub fn heading_style(&self) -> Style {

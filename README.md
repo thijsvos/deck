@@ -254,9 +254,9 @@ Use `--theme corporate` or set `theme = "corporate"` in frontmatter.
 | Theme | Look | Font | Transition |
 |-------|------|------|------------|
 | **hacker** (default) | Matrix green, neon pink, cyan headings | Block (`█`) | Glitch |
-| **corporate** | Navy, blue headings, gold accents | Thin (`┌─┐`) | Wipe |
+| **corporate** | Navy, blue headings, gold accents | Large (`██`) | Wipe |
 | **catppuccin** | Mocha palette, pink accents, peach bold | Block (`█`) | Dissolve |
-| **minimal** | Terminal defaults, white, yellow accents | Thin (`┌─┐`) | Fade |
+| **minimal** | Terminal defaults, white, yellow accents | Large (`██`) | Fade |
 
 Each theme carries its own default transition and font style. Override with `transition = "glitch"` in frontmatter.
 

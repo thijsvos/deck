@@ -36,29 +36,7 @@ impl TransitionState {
     }
 }
 
-struct Rng(u64);
-
-impl Rng {
-    fn new(seed: u64) -> Self {
-        Self(seed | 1)
-    }
-
-    fn next(&mut self) -> u64 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        self.0
-    }
-
-    fn next_f64(&mut self) -> f64 {
-        (self.next() % 10000) as f64 / 10000.0
-    }
-}
-
-const GLITCH_CHARS: &[char] = &[
-    '!', '@', '#', '$', '%', '^', '&', '*', '<', '>', '{', '}', '[', ']', '|', '/', '\\', '~', '░',
-    '▒', '▓', '█', '▄', '▀', '▌', '▐',
-];
+use crate::util::{Rng, GLITCH_CHARS};
 
 /// Apply transition overlay on top of already-rendered slide content.
 pub fn apply_transition(frame: &mut Frame, area: Rect, state: &TransitionState, theme: &Theme) {

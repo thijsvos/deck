@@ -12,6 +12,7 @@ mod render_presenter;
 mod sync;
 mod theme;
 mod transition;
+mod util;
 
 use std::io::{self, Write};
 use std::path::Path;

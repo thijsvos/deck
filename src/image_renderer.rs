@@ -31,13 +31,15 @@ pub struct ImageCache {
     max_resized: usize,
 }
 
+const DEFAULT_MAX_RESIZED: usize = 64;
+
 impl ImageCache {
     pub fn new() -> Self {
         Self {
             originals: HashMap::new(),
             resized: HashMap::new(),
             encoded: HashMap::new(),
-            max_resized: 64,
+            max_resized: DEFAULT_MAX_RESIZED,
         }
     }
 

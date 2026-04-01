@@ -1,5 +1,9 @@
 # deck
 
+[![CI](https://github.com/thijsvos/deck/actions/workflows/ci.yml/badge.svg)](https://github.com/thijsvos/deck/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/thijsvos/deck)](https://github.com/thijsvos/deck/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Terminal presentations with style.
 
 A tiny, single-binary presentation tool written in Rust. Render Markdown slides in your terminal with animated mathematical backgrounds, a hacker aesthetic, progressive bullet reveal, column layouts, and a full presenter mode.

@@ -56,43 +56,91 @@ mod tests {
     #[test]
     fn next_keys() {
         assert!(matches!(map_key(key(KeyCode::Right), false), Action::Next));
-        assert!(matches!(map_key(key(KeyCode::Char(' ')), false), Action::Next));
-        assert!(matches!(map_key(key(KeyCode::Char('l')), false), Action::Next));
-        assert!(matches!(map_key(key(KeyCode::Char('j')), false), Action::Next));
+        assert!(matches!(
+            map_key(key(KeyCode::Char(' ')), false),
+            Action::Next
+        ));
+        assert!(matches!(
+            map_key(key(KeyCode::Char('l')), false),
+            Action::Next
+        ));
+        assert!(matches!(
+            map_key(key(KeyCode::Char('j')), false),
+            Action::Next
+        ));
     }
 
     #[test]
     fn prev_keys() {
         assert!(matches!(map_key(key(KeyCode::Left), false), Action::Prev));
-        assert!(matches!(map_key(key(KeyCode::Char('h')), false), Action::Prev));
-        assert!(matches!(map_key(key(KeyCode::Char('k')), false), Action::Prev));
+        assert!(matches!(
+            map_key(key(KeyCode::Char('h')), false),
+            Action::Prev
+        ));
+        assert!(matches!(
+            map_key(key(KeyCode::Char('k')), false),
+            Action::Prev
+        ));
     }
 
     #[test]
     fn quit_keys() {
-        assert!(matches!(map_key(key(KeyCode::Char('q')), false), Action::Quit));
+        assert!(matches!(
+            map_key(key(KeyCode::Char('q')), false),
+            Action::Quit
+        ));
         assert!(matches!(map_key(key(KeyCode::Esc), false), Action::Quit));
     }
 
     #[test]
     fn goto_mode() {
-        assert!(matches!(map_key(key(KeyCode::Char(':')), false), Action::StartGoTo));
-        assert!(matches!(map_key(key(KeyCode::Char('5')), true), Action::GoToDigit('5')));
-        assert!(matches!(map_key(key(KeyCode::Enter), true), Action::GoToConfirm));
-        assert!(matches!(map_key(key(KeyCode::Esc), true), Action::GoToCancel));
+        assert!(matches!(
+            map_key(key(KeyCode::Char(':')), false),
+            Action::StartGoTo
+        ));
+        assert!(matches!(
+            map_key(key(KeyCode::Char('5')), true),
+            Action::GoToDigit('5')
+        ));
+        assert!(matches!(
+            map_key(key(KeyCode::Enter), true),
+            Action::GoToConfirm
+        ));
+        assert!(matches!(
+            map_key(key(KeyCode::Esc), true),
+            Action::GoToCancel
+        ));
     }
 
     #[test]
     fn goto_ignores_non_digits() {
-        assert!(matches!(map_key(key(KeyCode::Char('a')), true), Action::None));
+        assert!(matches!(
+            map_key(key(KeyCode::Char('a')), true),
+            Action::None
+        ));
     }
 
     #[test]
     fn control_keys() {
-        assert!(matches!(map_key(key(KeyCode::Char('p')), false), Action::TogglePresenter));
-        assert!(matches!(map_key(key(KeyCode::Char('?')), false), Action::ToggleHelp));
-        assert!(matches!(map_key(key(KeyCode::Char('r')), false), Action::ResetTimer));
-        assert!(matches!(map_key(key(KeyCode::Char('g')), false), Action::First));
-        assert!(matches!(map_key(key(KeyCode::Char('G')), false), Action::Last));
+        assert!(matches!(
+            map_key(key(KeyCode::Char('p')), false),
+            Action::TogglePresenter
+        ));
+        assert!(matches!(
+            map_key(key(KeyCode::Char('?')), false),
+            Action::ToggleHelp
+        ));
+        assert!(matches!(
+            map_key(key(KeyCode::Char('r')), false),
+            Action::ResetTimer
+        ));
+        assert!(matches!(
+            map_key(key(KeyCode::Char('g')), false),
+            Action::First
+        ));
+        assert!(matches!(
+            map_key(key(KeyCode::Char('G')), false),
+            Action::Last
+        ));
     }
 }

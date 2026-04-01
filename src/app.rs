@@ -115,7 +115,11 @@ impl App {
             Mode::Normal => {
                 let slide = &self.deck.slides[self.slide_index];
                 render::render_slide(
-                    frame, main_area, slide, &self.theme, self.reveal_count,
+                    frame,
+                    main_area,
+                    slide,
+                    &self.theme,
+                    self.reveal_count,
                     &mut ctx,
                 );
 
@@ -127,9 +131,13 @@ impl App {
             }
             Mode::Presenter => {
                 render_presenter::render_presenter(
-                    frame, main_area,
-                    &self.deck, self.slide_index, self.reveal_count,
-                    &self.theme, &self.timer,
+                    frame,
+                    main_area,
+                    &self.deck,
+                    self.slide_index,
+                    self.reveal_count,
+                    &self.theme,
+                    &self.timer,
                     &mut ctx,
                 );
             }
@@ -320,7 +328,11 @@ fn count_bullets(slide: &Slide) -> usize {
 
 fn initial_reveal(slide: &Slide) -> usize {
     let total = count_bullets(slide);
-    if total > 0 { 0 } else { usize::MAX }
+    if total > 0 {
+        0
+    } else {
+        usize::MAX
+    }
 }
 
 fn render_help(frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -418,7 +430,14 @@ mod tests {
     fn make_app(slides: Vec<Slide>) -> App {
         let deck = make_deck(slides);
         let theme = Theme::from_name(&crate::theme::ThemeName::Hacker);
-        App::new(deck, theme, None, false, ImageProtocol::HalfBlocks, std::path::PathBuf::from("."))
+        App::new(
+            deck,
+            theme,
+            None,
+            false,
+            ImageProtocol::HalfBlocks,
+            std::path::PathBuf::from("."),
+        )
     }
 
     fn key(code: KeyCode) -> KeyEvent {
@@ -437,7 +456,9 @@ mod tests {
         let slide = dummy_slide(vec![
             bullet_list(3),
             Block::NumberedList {
-                items: vec![ListItem { spans: vec![Span::Plain("x".into())] }],
+                items: vec![ListItem {
+                    spans: vec![Span::Plain("x".into())],
+                }],
             },
         ]);
         assert_eq!(count_bullets(&slide), 3);
@@ -458,7 +479,10 @@ mod tests {
 
     #[test]
     fn initial_reveal_without_bullets_returns_max() {
-        let slide = dummy_slide(vec![Block::Heading { level: 1, text: "Hi".into() }]);
+        let slide = dummy_slide(vec![Block::Heading {
+            level: 1,
+            text: "Hi".into(),
+        }]);
         assert_eq!(initial_reveal(&slide), usize::MAX);
     }
 
@@ -477,7 +501,10 @@ mod tests {
     fn advance_moves_to_next_slide_when_all_revealed() {
         let mut app = make_app(vec![
             dummy_slide(vec![bullet_list(1)]),
-            dummy_slide(vec![Block::Heading { level: 1, text: "Two".into() }]),
+            dummy_slide(vec![Block::Heading {
+                level: 1,
+                text: "Two".into(),
+            }]),
         ]);
         app.advance(); // reveal bullet
         assert_eq!(app.slide_index, 0);
@@ -487,7 +514,10 @@ mod tests {
 
     #[test]
     fn advance_stays_on_last_slide() {
-        let mut app = make_app(vec![dummy_slide(vec![Block::Heading { level: 1, text: "Only".into() }])]);
+        let mut app = make_app(vec![dummy_slide(vec![Block::Heading {
+            level: 1,
+            text: "Only".into(),
+        }])]);
         app.advance();
         assert_eq!(app.slide_index, 0);
     }
@@ -507,7 +537,10 @@ mod tests {
     fn go_back_moves_to_previous_slide() {
         let mut app = make_app(vec![
             dummy_slide(vec![bullet_list(1)]),
-            dummy_slide(vec![Block::Heading { level: 1, text: "Two".into() }]),
+            dummy_slide(vec![Block::Heading {
+                level: 1,
+                text: "Two".into(),
+            }]),
         ]);
         app.advance(); // reveal bullet
         app.advance(); // next slide
@@ -519,7 +552,10 @@ mod tests {
 
     #[test]
     fn go_back_stays_on_first_slide() {
-        let mut app = make_app(vec![dummy_slide(vec![Block::Heading { level: 1, text: "First".into() }])]);
+        let mut app = make_app(vec![dummy_slide(vec![Block::Heading {
+            level: 1,
+            text: "First".into(),
+        }])]);
         app.go_back();
         assert_eq!(app.slide_index, 0);
     }
@@ -579,24 +615,41 @@ mod tests {
 
         let sync_path = "/__deck_test_sync_presenter_follower__";
 
-        let mk_slides = || vec![
-            dummy_slide(vec![Block::Heading { level: 1, text: "One".into() }]),
-            dummy_slide(vec![Block::Heading { level: 1, text: "Two".into() }]),
-            dummy_slide(vec![Block::Heading { level: 1, text: "Three".into() }]),
-        ];
+        let mk_slides = || {
+            vec![
+                dummy_slide(vec![Block::Heading {
+                    level: 1,
+                    text: "One".into(),
+                }]),
+                dummy_slide(vec![Block::Heading {
+                    level: 1,
+                    text: "Two".into(),
+                }]),
+                dummy_slide(vec![Block::Heading {
+                    level: 1,
+                    text: "Three".into(),
+                }]),
+            ]
+        };
 
         let presenter_sync = SyncFile::for_file(sync_path);
         let theme = Theme::from_name(&crate::theme::ThemeName::Hacker);
         let mut presenter = App::new(
-            make_deck(mk_slides()), theme,
+            make_deck(mk_slides()),
+            theme,
             Some(SyncFile::for_file(sync_path)),
-            false, ImageProtocol::HalfBlocks, std::path::PathBuf::from("."),
+            false,
+            ImageProtocol::HalfBlocks,
+            std::path::PathBuf::from("."),
         );
         let theme2 = Theme::from_name(&crate::theme::ThemeName::Hacker);
         let mut follower = App::new(
-            make_deck(mk_slides()), theme2,
+            make_deck(mk_slides()),
+            theme2,
             Some(SyncFile::for_file(sync_path)),
-            true, ImageProtocol::HalfBlocks, std::path::PathBuf::from("."),
+            true,
+            ImageProtocol::HalfBlocks,
+            std::path::PathBuf::from("."),
         );
 
         assert_eq!(presenter.slide_index, 0);
@@ -623,27 +676,44 @@ mod tests {
 
         let sync_path = "/__deck_test_sync_bullet_reveal__";
 
-        let mk_slides = || vec![
-            dummy_slide(vec![Block::Heading { level: 1, text: "Title".into() }]),
-            dummy_slide(vec![
-                Block::Heading { level: 2, text: "Bullets".into() },
-                bullet_list(3),
-            ]),
-            dummy_slide(vec![Block::Heading { level: 1, text: "End".into() }]),
-        ];
+        let mk_slides = || {
+            vec![
+                dummy_slide(vec![Block::Heading {
+                    level: 1,
+                    text: "Title".into(),
+                }]),
+                dummy_slide(vec![
+                    Block::Heading {
+                        level: 2,
+                        text: "Bullets".into(),
+                    },
+                    bullet_list(3),
+                ]),
+                dummy_slide(vec![Block::Heading {
+                    level: 1,
+                    text: "End".into(),
+                }]),
+            ]
+        };
 
         let presenter_sync = SyncFile::for_file(sync_path);
         let theme = Theme::from_name(&crate::theme::ThemeName::Hacker);
         let mut presenter = App::new(
-            make_deck(mk_slides()), theme,
+            make_deck(mk_slides()),
+            theme,
             Some(SyncFile::for_file(sync_path)),
-            false, ImageProtocol::HalfBlocks, std::path::PathBuf::from("."),
+            false,
+            ImageProtocol::HalfBlocks,
+            std::path::PathBuf::from("."),
         );
         let theme2 = Theme::from_name(&crate::theme::ThemeName::Hacker);
         let mut follower = App::new(
-            make_deck(mk_slides()), theme2,
+            make_deck(mk_slides()),
+            theme2,
             Some(SyncFile::for_file(sync_path)),
-            true, ImageProtocol::HalfBlocks, std::path::PathBuf::from("."),
+            true,
+            ImageProtocol::HalfBlocks,
+            std::path::PathBuf::from("."),
         );
 
         // Advance from title to bullets slide

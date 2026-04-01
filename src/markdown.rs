@@ -2,13 +2,28 @@ use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Parser, Tag, TagEnd};
 
 #[derive(Debug, Clone)]
 pub enum Block {
-    Heading { level: u8, text: String },
-    Paragraph { spans: Vec<Span> },
-    BulletList { items: Vec<ListItem> },
-    NumberedList { items: Vec<ListItem> },
-    Code { lang: Option<String>, code: String },
+    Heading {
+        level: u8,
+        text: String,
+    },
+    Paragraph {
+        spans: Vec<Span>,
+    },
+    BulletList {
+        items: Vec<ListItem>,
+    },
+    NumberedList {
+        items: Vec<ListItem>,
+    },
+    Code {
+        lang: Option<String>,
+        code: String,
+    },
     HorizontalRule,
-    Image { path: String, alt: String },
+    Image {
+        path: String,
+        alt: String,
+    },
     #[allow(dead_code)]
     Blank,
 }
@@ -60,7 +75,9 @@ pub fn parse_blocks(markdown: &str) -> Vec<Block> {
             }
             Event::Start(Tag::List(ordered)) => {
                 // Save parent list state for nested lists
-                state.list_stack.push((state.ordered, std::mem::take(&mut state.list_items)));
+                state
+                    .list_stack
+                    .push((state.ordered, std::mem::take(&mut state.list_items)));
                 state.in_list = true;
                 state.ordered = ordered.is_some();
                 state.list_items.clear();
@@ -94,7 +111,11 @@ pub fn parse_blocks(markdown: &str) -> Vec<Block> {
                 state.code_lang = match kind {
                     CodeBlockKind::Fenced(lang) => {
                         let l = lang.to_string();
-                        if l.is_empty() { None } else { Some(l) }
+                        if l.is_empty() {
+                            None
+                        } else {
+                            Some(l)
+                        }
                     }
                     CodeBlockKind::Indented => None,
                 };

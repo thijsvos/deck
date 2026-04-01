@@ -147,8 +147,10 @@ fn render_blocks(
                         return;
                     }
                     let line = spans_to_line(&item.spans, theme);
-                    let mut spans_vec =
-                        vec![RSpan::styled(format!("  {} ", theme.bullet), theme.bullet_style())];
+                    let mut spans_vec = vec![RSpan::styled(
+                        format!("  {} ", theme.bullet),
+                        theme.bullet_style(),
+                    )];
                     spans_vec.extend(line.spans);
                     let combined = Line::from(spans_vec);
                     let h = estimate_line_height(&combined, remaining.width);
@@ -196,7 +198,10 @@ fn render_block(
         }
         Block::Heading { text, .. } => {
             let line = Line::from(vec![RSpan::styled(text.clone(), theme.heading_style())]);
-            frame.render_widget(Paragraph::new(line), Rect::new(area.x, area.y, area.width, 1));
+            frame.render_widget(
+                Paragraph::new(line),
+                Rect::new(area.x, area.y, area.width, 1),
+            );
             2
         }
         Block::Paragraph { spans } => {
@@ -212,8 +217,10 @@ fn render_block(
             let mut h = 0u16;
             for item in items {
                 let line = spans_to_line(&item.spans, theme);
-                let mut spans_vec =
-                    vec![RSpan::styled(format!("  {} ", theme.bullet), theme.bullet_style())];
+                let mut spans_vec = vec![RSpan::styled(
+                    format!("  {} ", theme.bullet),
+                    theme.bullet_style(),
+                )];
                 spans_vec.extend(line.spans);
                 let combined = Line::from(spans_vec);
                 let lh = estimate_line_height(&combined, area.width);
@@ -271,19 +278,26 @@ fn render_block(
         }
         Block::Image { path, alt } => {
             // Load, resize, and cache — only resizes once per (path, size)
-            let resized = match ctx.image_cache.get_resized(path, ctx.base_dir, area.width, area.height) {
-                Some(img) => img.clone(),
-                None => {
-                    let label = if alt.is_empty() {
-                        format!("[Image: {}]", path)
-                    } else {
-                        format!("[Image: {}]", alt)
-                    };
-                    let line = Line::from(RSpan::styled(label, theme.rule_style()));
-                    frame.render_widget(Paragraph::new(line), Rect::new(area.x, area.y, area.width, 1));
-                    return 2;
-                }
-            };
+            let resized =
+                match ctx
+                    .image_cache
+                    .get_resized(path, ctx.base_dir, area.width, area.height)
+                {
+                    Some(img) => img.clone(),
+                    None => {
+                        let label = if alt.is_empty() {
+                            format!("[Image: {}]", path)
+                        } else {
+                            format!("[Image: {}]", alt)
+                        };
+                        let line = Line::from(RSpan::styled(label, theme.rule_style()));
+                        frame.render_widget(
+                            Paragraph::new(line),
+                            Rect::new(area.x, area.y, area.width, 1),
+                        );
+                        return 2;
+                    }
+                };
 
             let (px_w, px_h) = resized.dimensions();
             let consumed_rows = px_h.div_ceil(2) as u16;
@@ -305,7 +319,8 @@ fn render_block(
             // Queue deferred high-res render for Kitty/Sixel
             if matches!(ctx.protocol, ImageProtocol::Kitty | ImageProtocol::Sixel) {
                 let kitty_b64 = if ctx.protocol == ImageProtocol::Kitty {
-                    ctx.image_cache.get_encoded_kitty(path, ctx.base_dir, area.width, area.height)
+                    ctx.image_cache
+                        .get_encoded_kitty(path, ctx.base_dir, area.width, area.height)
                         .map(|s| s.to_string())
                 } else {
                     None
@@ -359,9 +374,7 @@ fn estimate_height(blocks: &[Block], width: u16) -> u16 {
                 let text_len: usize = spans
                     .iter()
                     .map(|s| match s {
-                        Span::Plain(t) | Span::Bold(t) | Span::Italic(t) | Span::Code(t) => {
-                            t.len()
-                        }
+                        Span::Plain(t) | Span::Bold(t) | Span::Italic(t) | Span::Code(t) => t.len(),
                     })
                     .sum();
                 let w = width.max(1) as usize;
@@ -440,7 +453,10 @@ mod tests {
 
     #[test]
     fn estimate_height_heading() {
-        let blocks = vec![Block::Heading { level: 1, text: "Hi".into() }];
+        let blocks = vec![Block::Heading {
+            level: 1,
+            text: "Hi".into(),
+        }];
         assert_eq!(estimate_height(&blocks, 80), 8);
     }
 
@@ -462,10 +478,7 @@ mod tests {
     #[test]
     fn spans_to_line_maps_styles() {
         let theme = crate::theme::Theme::from_name(&crate::theme::ThemeName::Hacker);
-        let spans = vec![
-            Span::Plain("hello ".into()),
-            Span::Bold("world".into()),
-        ];
+        let spans = vec![Span::Plain("hello ".into()), Span::Bold("world".into())];
         let line = spans_to_line(&spans, &theme);
         assert_eq!(line.spans.len(), 2);
     }

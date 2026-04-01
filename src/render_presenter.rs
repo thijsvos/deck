@@ -80,7 +80,9 @@ pub fn render_presenter(
         frame.render_widget(Paragraph::new(msg), inner);
     } else {
         frame.render_widget(
-            Paragraph::new(notes_text).style(theme.body_style()).wrap(Wrap { trim: false }),
+            Paragraph::new(notes_text)
+                .style(theme.body_style())
+                .wrap(Wrap { trim: false }),
             inner,
         );
     }

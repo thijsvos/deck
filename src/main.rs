@@ -51,12 +51,8 @@ struct Cli {
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
 
-    let content = std::fs::read_to_string(&cli.file).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("{}: {}", cli.file, e),
-        )
-    })?;
+    let content = std::fs::read_to_string(&cli.file)
+        .map_err(|e| io::Error::new(io::ErrorKind::NotFound, format!("{}: {}", cli.file, e)))?;
 
     let deck = parse_deck(&content);
 
@@ -111,9 +107,9 @@ fn main() -> io::Result<()> {
         }
 
         let timeout = if app.transition.is_some() {
-            Duration::from_millis(16)  // 60fps during transitions
+            Duration::from_millis(16) // 60fps during transitions
         } else if app.has_active_background() || app.is_follower {
-            Duration::from_millis(33)  // ~30fps for backgrounds or sync polling
+            Duration::from_millis(33) // ~30fps for backgrounds or sync polling
         } else {
             Duration::from_millis(100) // low CPU when idle
         };

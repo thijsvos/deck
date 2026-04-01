@@ -126,7 +126,12 @@ fn encode_kitty_png(img: &RgbaImage) -> Option<String> {
     let mut png_buf = Vec::new();
     let encoder = PngEncoder::new(&mut png_buf);
     encoder
-        .write_image(img.as_raw(), img.width(), img.height(), image::ExtendedColorType::Rgba8)
+        .write_image(
+            img.as_raw(),
+            img.width(),
+            img.height(),
+            image::ExtendedColorType::Rgba8,
+        )
         .ok()?;
 
     Some(base64::engine::general_purpose::STANDARD.encode(&png_buf))
@@ -259,17 +264,13 @@ fn render_kitty<W: Write>(w: &mut W, d: &DeferredImage) -> std::io::Result<()> {
     let chunks: Vec<&[u8]> = b64.as_bytes().chunks(chunk_size).collect();
 
     if chunks.len() <= 1 {
-        write!(
-            w,
-            "\x1b_Ga=T,f=100,c={},r={};{}\x1b\\",
-            d.cols, d.rows, b64
-        )?;
+        write!(w, "\x1b_Ga=T,f=100,c={},r={};{}\x1b\\", d.cols, d.rows, b64)?;
     } else {
         for (i, chunk) in chunks.iter().enumerate() {
             let is_last = i == chunks.len() - 1;
             let m = if is_last { 0 } else { 1 };
-            let chunk_str = std::str::from_utf8(chunk)
-                .expect("base64 output is always valid ASCII/UTF-8");
+            let chunk_str =
+                std::str::from_utf8(chunk).expect("base64 output is always valid ASCII/UTF-8");
 
             if i == 0 {
                 write!(
@@ -396,14 +397,18 @@ mod tests {
     #[test]
     fn image_cache_missing_file_returns_none() {
         let mut cache = ImageCache::new();
-        assert!(cache.get_resized("nonexistent.png", Path::new("."), 80, 24).is_none());
+        assert!(cache
+            .get_resized("nonexistent.png", Path::new("."), 80, 24)
+            .is_none());
     }
 
     #[test]
     fn path_traversal_blocked() {
         let mut cache = ImageCache::new();
         // Trying to escape base_dir should return None
-        assert!(cache.get_resized("../../../etc/passwd", Path::new("."), 80, 24).is_none());
+        assert!(cache
+            .get_resized("../../../etc/passwd", Path::new("."), 80, 24)
+            .is_none());
     }
 
     #[test]
@@ -414,6 +419,8 @@ mod tests {
         let s = b64.unwrap();
         assert!(!s.is_empty());
         // Base64 should only contain valid characters
-        assert!(s.chars().all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '='));
+        assert!(s
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '='));
     }
 }

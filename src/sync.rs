@@ -22,7 +22,9 @@ impl SyncFile {
 
     /// Write current state. Uses write-then-rename for atomicity.
     pub fn write(&self, slide: usize, reveal: usize) {
-        let tmp = self.path.with_extension(format!("tmp.{}", std::process::id()));
+        let tmp = self
+            .path
+            .with_extension(format!("tmp.{}", std::process::id()));
         if let Ok(mut f) = fs::File::create(&tmp) {
             if writeln!(f, "{} {}", slide, reveal).is_ok() {
                 let _ = f.flush();
@@ -46,7 +48,9 @@ impl SyncFile {
     pub fn cleanup(&self) {
         let _ = fs::remove_file(&self.path);
         // Clean up any leftover tmp file from this process
-        let tmp = self.path.with_extension(format!("tmp.{}", std::process::id()));
+        let tmp = self
+            .path
+            .with_extension(format!("tmp.{}", std::process::id()));
         let _ = fs::remove_file(&tmp);
     }
 }

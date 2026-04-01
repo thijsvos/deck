@@ -171,7 +171,11 @@ fn parse_slide(raw: &str) -> Slide {
 
     Slide {
         blocks,
-        layout: if is_center { Layout::Center } else { Layout::Default },
+        layout: if is_center {
+            Layout::Center
+        } else {
+            Layout::Default
+        },
         columns: None,
         notes,
         background,

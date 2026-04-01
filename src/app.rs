@@ -164,6 +164,7 @@ impl App {
             frame,
             status_area,
             &self.deck.meta.title,
+            self.deck.meta.author.as_deref(),
             self.slide_index + 1,
             self.deck.slides.len(),
             elapsed,

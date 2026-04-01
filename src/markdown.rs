@@ -2,30 +2,13 @@ use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Parser, Tag, TagEnd};
 
 #[derive(Debug, Clone)]
 pub enum Block {
-    Heading {
-        level: u8,
-        text: String,
-    },
-    Paragraph {
-        spans: Vec<Span>,
-    },
-    BulletList {
-        items: Vec<ListItem>,
-    },
-    NumberedList {
-        items: Vec<ListItem>,
-    },
-    Code {
-        lang: Option<String>,
-        code: String,
-    },
+    Heading { level: u8, text: String },
+    Paragraph { spans: Vec<Span> },
+    BulletList { items: Vec<ListItem> },
+    NumberedList { items: Vec<ListItem> },
+    Code { lang: Option<String>, code: String },
     HorizontalRule,
-    Image {
-        path: String,
-        alt: String,
-    },
-    #[allow(dead_code)]
-    Blank,
+    Image { path: String, alt: String },
 }
 
 #[derive(Debug, Clone)]

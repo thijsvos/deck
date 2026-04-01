@@ -15,12 +15,8 @@ pub struct Deck {
 pub struct DeckMeta {
     #[serde(default = "default_title")]
     pub title: String,
-    #[allow(dead_code)]
     #[serde(default)]
     pub author: Option<String>,
-    #[allow(dead_code)]
-    #[serde(default)]
-    pub date: Option<String>,
     #[serde(default)]
     pub theme: ThemeName,
     #[serde(default)]
@@ -38,7 +34,6 @@ impl Default for DeckMeta {
         Self {
             title: default_title(),
             author: None,
-            date: None,
             theme: ThemeName::default(),
             transition: TransitionKind::default(),
             background: None,

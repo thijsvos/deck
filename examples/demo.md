@@ -79,7 +79,7 @@ Syntax-highlighted with animated typewriter entrance.
 
 ## Inline Images
 
-![](test2.png)
+![](demo.png)
 
 Images auto-detect your terminal: Kitty protocol, Sixel, or half-block fallback.
 

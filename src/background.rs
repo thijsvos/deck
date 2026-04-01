@@ -19,6 +19,26 @@ pub enum BackgroundKind {
     Orbit,
 }
 
+impl std::str::FromStr for BackgroundKind {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "matrix" => Ok(Self::Matrix),
+            "plasma" => Ok(Self::Plasma),
+            "lissajous" => Ok(Self::Lissajous),
+            "spiral" => Ok(Self::Spiral),
+            "wave" => Ok(Self::Wave),
+            "aurora" => Ok(Self::Aurora),
+            "rain" => Ok(Self::Rain),
+            "noise" => Ok(Self::Noise),
+            "lattice" => Ok(Self::Lattice),
+            "orbit" => Ok(Self::Orbit),
+            _ => Err(()),
+        }
+    }
+}
+
 /// Apply animated background into empty (space) cells of the buffer.
 /// Call this AFTER the slide content has been rendered so the background
 /// only fills the gaps around text.
@@ -38,13 +58,7 @@ pub fn apply_background(
     }
 }
 
-fn apply_percell(
-    frame: &mut Frame,
-    area: Rect,
-    kind: &BackgroundKind,
-    time: f64,
-    theme: &Theme,
-) {
+fn apply_percell(frame: &mut Frame, area: Rect, kind: &BackgroundKind, time: f64, theme: &Theme) {
     let buf = frame.buffer_mut();
 
     for y in 0..area.height {
@@ -114,14 +128,7 @@ fn shade_color(theme: &Theme, brightness: f64) -> ratatui::style::Color {
 
 // ── cell dispatcher (for O(1)-per-cell backgrounds) ────────────────
 
-fn compute_cell(
-    kind: &BackgroundKind,
-    x: u16,
-    y: u16,
-    w: u16,
-    h: u16,
-    t: f64,
-) -> (char, f64) {
+fn compute_cell(kind: &BackgroundKind, x: u16, y: u16, w: u16, h: u16, t: f64) -> (char, f64) {
     match kind {
         BackgroundKind::Matrix => matrix_cell(x, y, w, h, t),
         BackgroundKind::Plasma => plasma_cell(x, y, w, h, t),
@@ -150,9 +157,8 @@ fn hash2(a: u64, b: u64) -> u64 {
 // ════════════════════════════════════════════════════════════════════
 
 const MATRIX_CHARS: &[char] = &[
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', '@', '#',
-    '$', '%', '&', '*', '+', '-', '=', '~', ':', ';', '<', '>', '{', '}', '[', ']', '|', '/',
-    '\\',
+    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', '@', '#', '$',
+    '%', '&', '*', '+', '-', '=', '~', ':', ';', '<', '>', '{', '}', '[', ']', '|', '/', '\\',
 ];
 
 fn matrix_cell(x: u16, y: u16, _w: u16, h: u16, t: f64) -> (char, f64) {
@@ -213,8 +219,31 @@ fn apply_lissajous(frame: &mut Frame, area: Rect, time: f64, theme: &Theme) {
         return;
     }
 
-    // Pre-compute brightness grid by scattering curve points
-    let mut grid = vec![0.0f64; w * h];
+    // Reuse thread-local grid to avoid allocation every frame
+    thread_local! {
+        static GRID: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+    GRID.with(|g| {
+        let mut grid = g.borrow_mut();
+        let size = w * h;
+        if grid.len() != size {
+            grid.resize(size, 0.0);
+        } else {
+            grid.fill(0.0);
+        }
+        apply_lissajous_inner(frame, area, time, theme, w, h, &mut grid);
+    });
+}
+
+fn apply_lissajous_inner(
+    frame: &mut Frame,
+    area: Rect,
+    time: f64,
+    theme: &Theme,
+    w: usize,
+    h: usize,
+    grid: &mut [f64],
+) {
     let cx = w as f64 / 2.0;
     let cy = h as f64 / 2.0;
 
@@ -331,10 +360,9 @@ fn wave_cell(x: u16, y: u16, w: u16, h: u16, t: f64) -> (char, f64) {
 //    ★ Best suited for title pages with centred text ★
 // ════════════════════════════════════════════════════════════════════
 
-fn aurora_cell(x: u16, y: u16, w: u16, h: u16, t: f64) -> (char, f64) {
+fn aurora_cell(x: u16, y: u16, _w: u16, h: u16, t: f64) -> (char, f64) {
     let fx = x as f64;
     let fy = y as f64;
-    let _fw = w as f64;
     let fh = h as f64;
     let t = t * 0.18;
 
@@ -489,7 +517,30 @@ fn apply_orbit(frame: &mut Frame, area: Rect, time: f64, theme: &Theme) {
         return;
     }
 
-    let mut grid = vec![0.0f64; w * h];
+    thread_local! {
+        static GRID: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+    GRID.with(|g| {
+        let mut grid = g.borrow_mut();
+        let size = w * h;
+        if grid.len() != size {
+            grid.resize(size, 0.0);
+        } else {
+            grid.fill(0.0);
+        }
+        apply_orbit_inner(frame, area, time, theme, w, h, &mut grid);
+    });
+}
+
+fn apply_orbit_inner(
+    frame: &mut Frame,
+    area: Rect,
+    time: f64,
+    theme: &Theme,
+    w: usize,
+    h: usize,
+    grid: &mut [f64],
+) {
     let cx = w as f64 / 2.0;
     let cy = h as f64 / 2.0;
 
@@ -644,27 +695,48 @@ mod tests {
         for x in (0..80).step_by(10) {
             for y in (0..24).step_by(6) {
                 let (_, b) = f(x, y, 80, 24, 0.5);
-                assert!(b >= 0.0 && b <= 1.0, "{} brightness {} out of range", name, b);
+                assert!(
+                    b >= 0.0 && b <= 1.0,
+                    "{} brightness {} out of range",
+                    name,
+                    b
+                );
             }
         }
     }
 
     #[test]
-    fn matrix_cell_valid() { check_cell_fn(matrix_cell, "matrix"); }
+    fn matrix_cell_valid() {
+        check_cell_fn(matrix_cell, "matrix");
+    }
     #[test]
-    fn plasma_cell_valid() { check_cell_fn(plasma_cell, "plasma"); }
+    fn plasma_cell_valid() {
+        check_cell_fn(plasma_cell, "plasma");
+    }
     #[test]
-    fn spiral_cell_valid() { check_cell_fn(spiral_cell, "spiral"); }
+    fn spiral_cell_valid() {
+        check_cell_fn(spiral_cell, "spiral");
+    }
     #[test]
-    fn wave_cell_valid() { check_cell_fn(wave_cell, "wave"); }
+    fn wave_cell_valid() {
+        check_cell_fn(wave_cell, "wave");
+    }
     #[test]
-    fn aurora_cell_valid() { check_cell_fn(aurora_cell, "aurora"); }
+    fn aurora_cell_valid() {
+        check_cell_fn(aurora_cell, "aurora");
+    }
     #[test]
-    fn rain_cell_valid() { check_cell_fn(rain_cell, "rain"); }
+    fn rain_cell_valid() {
+        check_cell_fn(rain_cell, "rain");
+    }
     #[test]
-    fn noise_cell_valid() { check_cell_fn(noise_cell, "noise"); }
+    fn noise_cell_valid() {
+        check_cell_fn(noise_cell, "noise");
+    }
     #[test]
-    fn lattice_cell_valid() { check_cell_fn(lattice_cell, "lattice"); }
+    fn lattice_cell_valid() {
+        check_cell_fn(lattice_cell, "lattice");
+    }
 
     #[test]
     fn compute_cell_dispatches() {

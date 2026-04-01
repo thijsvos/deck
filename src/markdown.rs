@@ -2,13 +2,28 @@ use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Parser, Tag, TagEnd};
 
 #[derive(Debug, Clone)]
 pub enum Block {
-    Heading { level: u8, text: String },
-    Paragraph { spans: Vec<Span> },
-    BulletList { items: Vec<ListItem> },
-    NumberedList { items: Vec<ListItem> },
-    CodeBlock { lang: Option<String>, code: String },
+    Heading {
+        level: u8,
+        text: String,
+    },
+    Paragraph {
+        spans: Vec<Span>,
+    },
+    BulletList {
+        items: Vec<ListItem>,
+    },
+    NumberedList {
+        items: Vec<ListItem>,
+    },
+    Code {
+        lang: Option<String>,
+        code: String,
+    },
     HorizontalRule,
-    Image { path: String, alt: String },
+    Image {
+        path: String,
+        alt: String,
+    },
     #[allow(dead_code)]
     Blank,
 }
@@ -52,26 +67,35 @@ pub fn parse_blocks(markdown: &str) -> Vec<Block> {
                 }
             }
             Event::End(TagEnd::Paragraph) => {
-                if !state.in_list {
-                    if !state.spans.is_empty() {
-                        blocks.push(Block::Paragraph {
-                            spans: state.spans.drain(..).collect(),
-                        });
-                    }
+                if !state.in_list && !state.spans.is_empty() {
+                    blocks.push(Block::Paragraph {
+                        spans: state.spans.drain(..).collect(),
+                    });
                 }
             }
             Event::Start(Tag::List(ordered)) => {
+                // Save parent list state for nested lists
+                state
+                    .list_stack
+                    .push((state.ordered, std::mem::take(&mut state.list_items)));
                 state.in_list = true;
                 state.ordered = ordered.is_some();
                 state.list_items.clear();
             }
             Event::End(TagEnd::List(_)) => {
-                state.in_list = false;
                 let items: Vec<ListItem> = state.list_items.drain(..).collect();
                 if state.ordered {
                     blocks.push(Block::NumberedList { items });
                 } else {
                     blocks.push(Block::BulletList { items });
+                }
+                // Restore parent list state
+                if let Some((parent_ordered, parent_items)) = state.list_stack.pop() {
+                    state.ordered = parent_ordered;
+                    state.list_items = parent_items;
+                    state.in_list = true;
+                } else {
+                    state.in_list = false;
                 }
             }
             Event::Start(Tag::Item) => {
@@ -87,7 +111,11 @@ pub fn parse_blocks(markdown: &str) -> Vec<Block> {
                 state.code_lang = match kind {
                     CodeBlockKind::Fenced(lang) => {
                         let l = lang.to_string();
-                        if l.is_empty() { None } else { Some(l) }
+                        if l.is_empty() {
+                            None
+                        } else {
+                            Some(l)
+                        }
                     }
                     CodeBlockKind::Indented => None,
                 };
@@ -96,7 +124,7 @@ pub fn parse_blocks(markdown: &str) -> Vec<Block> {
             Event::End(TagEnd::CodeBlock) => {
                 state.in_code = false;
                 let code: String = state.text_buf.drain(..).collect();
-                blocks.push(Block::CodeBlock {
+                blocks.push(Block::Code {
                     lang: state.code_lang.take(),
                     code: code.trim_end().to_string(),
                 });
@@ -114,9 +142,7 @@ pub fn parse_blocks(markdown: &str) -> Vec<Block> {
                 state.in_bold = false;
             }
             Event::Text(text) => {
-                if state.in_image {
-                    state.text_buf.push(text.to_string());
-                } else if state.in_code || state.in_heading {
+                if state.in_image || state.in_code || state.in_heading {
                     state.text_buf.push(text.to_string());
                 } else if state.in_bold {
                     state.spans.push(Span::Bold(text.to_string()));
@@ -184,6 +210,7 @@ struct ParseState {
     text_buf: Vec<String>,
     spans: Vec<Span>,
     list_items: Vec<ListItem>,
+    list_stack: Vec<(bool, Vec<ListItem>)>,
     in_image: bool,
     image_dest: Option<String>,
 }
@@ -263,7 +290,7 @@ mod tests {
     #[test]
     fn parse_code_block() {
         let blocks = parse_blocks("```rust\nfn main() {}\n```");
-        if let Block::CodeBlock { lang, code } = &blocks[0] {
+        if let Block::Code { lang, code } = &blocks[0] {
             assert_eq!(lang.as_deref(), Some("rust"));
             assert!(code.contains("fn main"));
         } else {

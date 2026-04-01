@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::fmt::Write as FmtWrite;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use image::imageops::FilterType;
 use image::RgbaImage;
@@ -20,9 +22,13 @@ pub enum ImageProtocol {
 /// Stores already-resized images so resize only happens once per size.
 pub struct ImageCache {
     /// Original decoded images keyed by path.
-    originals: HashMap<String, RgbaImage>,
+    originals: HashMap<String, Arc<RgbaImage>>,
     /// Resized images keyed by (path, cols, rows).
-    resized: HashMap<(String, u16, u16), RgbaImage>,
+    resized: HashMap<(String, u16, u16), Arc<RgbaImage>>,
+    /// Pre-encoded Kitty base64 PNG keyed by (path, cols, rows).
+    encoded: HashMap<(String, u16, u16), String>,
+    /// Maximum number of resized entries before eviction.
+    max_resized: usize,
 }
 
 impl ImageCache {
@@ -30,42 +36,105 @@ impl ImageCache {
         Self {
             originals: HashMap::new(),
             resized: HashMap::new(),
+            encoded: HashMap::new(),
+            max_resized: 64,
         }
     }
 
     /// Load, resize, and cache an image for the given area dimensions.
-    /// Returns None if the file can't be read/decoded.
+    /// Returns None if the file can't be read/decoded or path escapes base_dir.
     pub fn get_resized(
         &mut self,
         src: &str,
         base_dir: &Path,
         max_cols: u16,
         max_rows: u16,
-    ) -> Option<&RgbaImage> {
+    ) -> Option<&Arc<RgbaImage>> {
         let full_path = if Path::new(src).is_absolute() {
             PathBuf::from(src)
         } else {
             base_dir.join(src)
         };
 
-        let key = full_path.to_string_lossy().to_string();
+        // Path traversal guard: resolved path must stay within base_dir
+        let resolved = full_path.canonicalize().ok()?;
+        let base = base_dir.canonicalize().ok()?;
+        if !resolved.starts_with(&base) {
+            return None;
+        }
+
+        let key = resolved.to_string_lossy().to_string();
         let cache_key = (key.clone(), max_cols, max_rows);
 
         if self.resized.contains_key(&cache_key) {
             return self.resized.get(&cache_key);
         }
 
+        // Evict if cache is too large
+        if self.resized.len() >= self.max_resized {
+            self.resized.clear();
+            self.encoded.clear();
+        }
+
         // Decode original if not cached
         if !self.originals.contains_key(&key) {
-            let img = image::open(&full_path).ok()?;
-            self.originals.insert(key.clone(), img.to_rgba8());
+            let img = image::open(&resolved).ok()?;
+            self.originals.insert(key.clone(), Arc::new(img.to_rgba8()));
         }
 
         let original = self.originals.get(&key)?;
         let resized = resize_to_fit(original, max_cols, max_rows);
-        self.resized.insert(cache_key.clone(), resized);
+        self.resized.insert(cache_key.clone(), Arc::new(resized));
         self.resized.get(&cache_key)
     }
+
+    /// Get pre-encoded Kitty base64 PNG for a cached resized image.
+    /// Computes and caches on first call for each (path, cols, rows).
+    pub fn get_encoded_kitty(
+        &mut self,
+        src: &str,
+        base_dir: &Path,
+        max_cols: u16,
+        max_rows: u16,
+    ) -> Option<&str> {
+        let full_path = if Path::new(src).is_absolute() {
+            PathBuf::from(src)
+        } else {
+            base_dir.join(src)
+        };
+        let resolved = full_path.canonicalize().ok()?;
+        let key = resolved.to_string_lossy().to_string();
+        let cache_key = (key, max_cols, max_rows);
+
+        if self.encoded.contains_key(&cache_key) {
+            return self.encoded.get(&cache_key).map(|s| s.as_str());
+        }
+
+        let img = self.resized.get(&cache_key)?;
+        let b64 = encode_kitty_png(img)?;
+        self.encoded.insert(cache_key.clone(), b64);
+        self.encoded.get(&cache_key).map(|s| s.as_str())
+    }
+}
+
+/// Encode RGBA image to PNG then base64 for Kitty protocol.
+fn encode_kitty_png(img: &RgbaImage) -> Option<String> {
+    use base64::Engine;
+    use image::codecs::png::PngEncoder;
+    use image::ImageEncoder;
+
+    let mut png_buf = Vec::new();
+    let encoder = PngEncoder::new(&mut png_buf);
+    encoder
+        .write_image(
+            img.as_raw(),
+            img.width(),
+            img.height(),
+            image::ExtendedColorType::Rgba8,
+        )
+        .ok()?;
+
+    Some(base64::engine::general_purpose::STANDARD.encode(&png_buf))
 }
 
 /// A queued image render for Kitty/Sixel post-draw pass.
@@ -74,8 +143,10 @@ pub struct DeferredImage {
     pub y: u16,
     pub cols: u16,
     pub rows: u16,
-    pub rgba: RgbaImage,
+    pub rgba: Arc<RgbaImage>,
     pub protocol: ImageProtocol,
+    /// Pre-encoded base64 PNG for Kitty (avoids re-encoding per frame).
+    pub kitty_b64: Option<String>,
 }
 
 /// Detect the best image protocol by checking environment variables.
@@ -129,7 +200,7 @@ pub fn resize_to_fit(img: &RgbaImage, max_cols: u16, max_rows: u16) -> RgbaImage
     let mut new_h = ((orig_h as f64 * scale).round() as u32).max(1);
 
     // Even height for clean half-block pairing
-    if new_h % 2 != 0 {
+    if !new_h.is_multiple_of(2) {
         new_h += 1;
     }
 
@@ -140,7 +211,7 @@ pub fn resize_to_fit(img: &RgbaImage, max_cols: u16, max_rows: u16) -> RgbaImage
 /// Each cell uses `▀` with fg = top pixel, bg = bottom pixel.
 pub fn render_halfblocks(buf: &mut Buffer, area: Rect, img: &RgbaImage) {
     let (img_w, img_h) = img.dimensions();
-    let rows = (img_h + 1) / 2;
+    let rows = img_h.div_ceil(2);
 
     for ty in 0..rows.min(area.height as u32) {
         for tx in 0..img_w.min(area.width as u32) {
@@ -178,20 +249,12 @@ pub fn flush_deferred<W: Write>(w: &mut W, images: &[DeferredImage]) -> std::io:
     Ok(())
 }
 
-/// Kitty Graphics Protocol: send PNG image as base64 in APC escape.
+/// Kitty Graphics Protocol: send pre-encoded base64 PNG in APC escape.
 fn render_kitty<W: Write>(w: &mut W, d: &DeferredImage) -> std::io::Result<()> {
-    use base64::Engine;
-    use image::codecs::png::PngEncoder;
-    use image::ImageEncoder;
-
-    // Encode RGBA to PNG
-    let mut png_buf = Vec::new();
-    let encoder = PngEncoder::new(&mut png_buf);
-    encoder
-        .write_image(d.rgba.as_raw(), d.rgba.width(), d.rgba.height(), image::ExtendedColorType::Rgba8)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&png_buf);
+    let b64 = match d.kitty_b64 {
+        Some(ref s) => s,
+        None => return Ok(()), // no encoded data available
+    };
 
     // Move cursor to image position (1-based)
     write!(w, "\x1b[{};{}H", d.y + 1, d.x + 1)?;
@@ -201,16 +264,13 @@ fn render_kitty<W: Write>(w: &mut W, d: &DeferredImage) -> std::io::Result<()> {
     let chunks: Vec<&[u8]> = b64.as_bytes().chunks(chunk_size).collect();
 
     if chunks.len() <= 1 {
-        write!(
-            w,
-            "\x1b_Ga=T,f=100,c={},r={};{}\x1b\\",
-            d.cols, d.rows, b64
-        )?;
+        write!(w, "\x1b_Ga=T,f=100,c={},r={};{}\x1b\\", d.cols, d.rows, b64)?;
     } else {
         for (i, chunk) in chunks.iter().enumerate() {
             let is_last = i == chunks.len() - 1;
             let m = if is_last { 0 } else { 1 };
-            let chunk_str = std::str::from_utf8(chunk).unwrap_or("");
+            let chunk_str =
+                std::str::from_utf8(chunk).expect("base64 output is always valid ASCII/UTF-8");
 
             if i == 0 {
                 write!(
@@ -219,7 +279,7 @@ fn render_kitty<W: Write>(w: &mut W, d: &DeferredImage) -> std::io::Result<()> {
                     d.cols, d.rows, m, chunk_str
                 )?;
             } else {
-                write!(w, "\x1b_Gm={};{}\x1b\\", m, chunk_str)?;
+                write!(w, "\x1b_Gm={m};{chunk_str}\x1b\\")?;
             }
         }
     }
@@ -228,16 +288,17 @@ fn render_kitty<W: Write>(w: &mut W, d: &DeferredImage) -> std::io::Result<()> {
 }
 
 /// Sixel fallback: re-render as half-blocks via escape sequences.
-/// A full Sixel encoder (color quantization + band encoding) is complex.
-/// For terminals detected as Sixel-capable, we write ANSI half-blocks
-/// directly which gives equivalent visual quality without the encoding overhead.
+/// Buffers each row into a String to reduce write call overhead.
 fn render_sixel_fallback<W: Write>(w: &mut W, d: &DeferredImage) -> std::io::Result<()> {
     let (img_w, img_h) = d.rgba.dimensions();
-    let rows = (img_h + 1) / 2;
+    let rows = img_h.div_ceil(2);
+
+    let mut row_buf = String::with_capacity(img_w as usize * 40);
 
     for ty in 0..rows.min(d.rows as u32) {
+        row_buf.clear();
         // Move cursor to start of this row
-        write!(w, "\x1b[{};{}H", d.y + 1 + ty as u16, d.x + 1)?;
+        let _ = write!(row_buf, "\x1b[{};{}H", d.y + 1 + ty as u16, d.x + 1);
 
         for tx in 0..img_w.min(d.cols as u32) {
             let top_py = ty * 2;
@@ -251,12 +312,14 @@ fn render_sixel_fallback<W: Write>(w: &mut W, d: &DeferredImage) -> std::io::Res
             };
 
             // ANSI 24-bit color: fg=top, bg=bottom, char=▀
-            write!(
-                w,
+            let _ = write!(
+                row_buf,
                 "\x1b[38;2;{};{};{};48;2;{};{};{}m▀",
                 top[0], top[1], top[2], bot[0], bot[1], bot[2]
-            )?;
+            );
         }
+
+        w.write_all(row_buf.as_bytes())?;
     }
     // Reset colors
     write!(w, "\x1b[0m")?;
@@ -334,6 +397,30 @@ mod tests {
     #[test]
     fn image_cache_missing_file_returns_none() {
         let mut cache = ImageCache::new();
-        assert!(cache.get_resized("nonexistent.png", Path::new("."), 80, 24).is_none());
+        assert!(cache
+            .get_resized("nonexistent.png", Path::new("."), 80, 24)
+            .is_none());
+    }
+
+    #[test]
+    fn path_traversal_blocked() {
+        let mut cache = ImageCache::new();
+        // Trying to escape base_dir should return None
+        assert!(cache
+            .get_resized("../../../etc/passwd", Path::new("."), 80, 24)
+            .is_none());
+    }
+
+    #[test]
+    fn encode_kitty_png_produces_base64() {
+        let img = make_image(4, 4);
+        let b64 = encode_kitty_png(&img);
+        assert!(b64.is_some());
+        let s = b64.unwrap();
+        assert!(!s.is_empty());
+        // Base64 should only contain valid characters
+        assert!(s
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '='));
     }
 }

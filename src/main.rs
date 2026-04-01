@@ -36,8 +36,8 @@ struct Cli {
     file: String,
 
     /// Theme: hacker (default), corporate, catppuccin, or minimal
-    #[arg(long)]
-    theme: Option<String>,
+    #[arg(long, value_enum)]
+    theme: Option<ThemeName>,
 
     /// Presenter screen: shows notes + timer, controls navigation. Syncs to --follow instances.
     #[arg(long, conflicts_with = "follow")]
@@ -51,12 +51,8 @@ struct Cli {
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
 
-    let content = std::fs::read_to_string(&cli.file).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("{}: {}", cli.file, e),
-        )
-    })?;
+    let content = std::fs::read_to_string(&cli.file)
+        .map_err(|e| io::Error::new(io::ErrorKind::NotFound, format!("{}: {}", cli.file, e)))?;
 
     let deck = parse_deck(&content);
 
@@ -65,16 +61,7 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
 
-    let theme_name = cli
-        .theme
-        .as_deref()
-        .map(|t| match t {
-            "minimal" => ThemeName::Minimal,
-            "corporate" => ThemeName::Corporate,
-            "catppuccin" => ThemeName::Catppuccin,
-            _ => ThemeName::Hacker,
-        })
-        .unwrap_or(deck.meta.theme.clone());
+    let theme_name = cli.theme.unwrap_or(deck.meta.theme.clone());
 
     let theme = Theme::from_name(&theme_name);
     let protocol = image_renderer::detect_protocol();
@@ -120,9 +107,9 @@ fn main() -> io::Result<()> {
         }
 
         let timeout = if app.transition.is_some() {
-            Duration::from_millis(16)  // 60fps during transitions
+            Duration::from_millis(16) // 60fps during transitions
         } else if app.has_active_background() || app.is_follower {
-            Duration::from_millis(33)  // ~30fps for backgrounds or sync polling
+            Duration::from_millis(33) // ~30fps for backgrounds or sync polling
         } else {
             Duration::from_millis(100) // low CPU when idle
         };

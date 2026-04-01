@@ -4,7 +4,7 @@ use serde::Deserialize;
 use crate::bigtext::FontStyle;
 use crate::transition::TransitionKind;
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeName {
     #[default]
@@ -59,12 +59,12 @@ impl Theme {
     fn catppuccin() -> Self {
         // Catppuccin Mocha palette
         Self {
-            bg: Color::Rgb(30, 30, 46),       // Base
-            fg: Color::Rgb(205, 214, 244),     // Text
+            bg: Color::Rgb(30, 30, 46),         // Base
+            fg: Color::Rgb(205, 214, 244),      // Text
             heading: Color::Rgb(137, 180, 250), // Blue
             accent: Color::Rgb(245, 194, 231),  // Pink
-            dim: Color::Rgb(88, 91, 112),      // Overlay0
-            code_bg: Color::Rgb(49, 50, 68),   // Surface0
+            dim: Color::Rgb(88, 91, 112),       // Overlay0
+            code_bg: Color::Rgb(49, 50, 68),    // Surface0
             code_fg: Color::Rgb(166, 173, 200), // Subtext0
             bold: Color::Rgb(250, 179, 135),    // Peach
             italic: Color::Rgb(180, 190, 254),  // Lavender
@@ -109,11 +109,15 @@ impl Theme {
     }
 
     pub fn h1_style(&self) -> Style {
-        Style::default().fg(self.heading).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(self.heading)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn heading_style(&self) -> Style {
-        Style::default().fg(self.heading).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(self.heading)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn body_style(&self) -> Style {
@@ -133,11 +137,17 @@ impl Theme {
     }
 
     pub fn bold_style(&self) -> Style {
-        Style::default().fg(self.bold).bg(self.bg).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(self.bold)
+            .bg(self.bg)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn italic_style(&self) -> Style {
-        Style::default().fg(self.italic).bg(self.bg).add_modifier(Modifier::ITALIC)
+        Style::default()
+            .fg(self.italic)
+            .bg(self.bg)
+            .add_modifier(Modifier::ITALIC)
     }
 
     pub fn rule_style(&self) -> Style {

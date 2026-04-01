@@ -423,4 +423,47 @@ mod tests {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '='));
     }
+
+    #[test]
+    fn resize_1x1_upscales_with_even_height() {
+        let img = make_image(1, 1);
+        let resized = resize_to_fit(&img, 100, 50);
+        assert!(resized.width() > 1);
+        assert!(resized.height() > 1);
+        assert!(resized.height().is_multiple_of(2));
+    }
+
+    #[test]
+    fn render_halfblocks_small_image() {
+        use ratatui::buffer::Buffer;
+        let mut img = RgbaImage::new(2, 2);
+        img.put_pixel(0, 0, image::Rgba([255, 0, 0, 255])); // top-left red
+        img.put_pixel(1, 0, image::Rgba([0, 255, 0, 255])); // top-right green
+        img.put_pixel(0, 1, image::Rgba([0, 0, 255, 255])); // bot-left blue
+        img.put_pixel(1, 1, image::Rgba([255, 255, 0, 255])); // bot-right yellow
+
+        let area = Rect::new(0, 0, 2, 1); // 2 cols x 1 row = 2x2 pixels
+        let mut buf = Buffer::empty(area);
+        render_halfblocks(&mut buf, area, &img);
+
+        // Both cells should be '▀'
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "▀");
+        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "▀");
+    }
+
+    #[test]
+    fn flush_deferred_halfblocks_is_noop() {
+        let images = vec![DeferredImage {
+            x: 0,
+            y: 0,
+            cols: 2,
+            rows: 1,
+            rgba: std::sync::Arc::new(make_image(2, 2)),
+            protocol: ImageProtocol::HalfBlocks,
+            kitty_b64: None,
+        }];
+        let mut output = Vec::new();
+        flush_deferred(&mut output, &images).unwrap();
+        assert!(output.is_empty()); // HalfBlocks writes nothing
+    }
 }

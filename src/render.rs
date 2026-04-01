@@ -605,4 +605,48 @@ mod tests {
         let line = spans_to_line(&spans, &theme);
         assert_eq!(line.spans.len(), 2);
     }
+
+    #[test]
+    fn estimate_height_bullet_list() {
+        let blocks = vec![Block::BulletList {
+            items: vec![
+                crate::markdown::ListItem {
+                    spans: vec![Span::Plain("a".into())],
+                },
+                crate::markdown::ListItem {
+                    spans: vec![Span::Plain("b".into())],
+                },
+                crate::markdown::ListItem {
+                    spans: vec![Span::Plain("c".into())],
+                },
+            ],
+        }];
+        assert_eq!(estimate_height(&blocks, 80), 3);
+    }
+
+    #[test]
+    fn estimate_height_code_block() {
+        let blocks = vec![Block::Code {
+            lang: Some("rust".into()),
+            code: "fn a() {}\nfn b() {}\nfn c() {}".into(),
+        }];
+        // 3 lines + 3 (borders + spacing) = 6
+        assert_eq!(estimate_height(&blocks, 80), 6);
+    }
+
+    #[test]
+    fn estimate_height_mixed_blocks() {
+        let blocks = vec![
+            Block::Heading {
+                level: 1,
+                text: "Title".into(),
+            },
+            Block::Paragraph {
+                spans: vec![Span::Plain("hello".into())],
+            },
+            Block::HorizontalRule,
+        ];
+        // H1=8, paragraph=2 (ceil(5/80)+1), rule=2 = 12
+        assert_eq!(estimate_height(&blocks, 80), 12);
+    }
 }

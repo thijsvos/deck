@@ -143,4 +143,30 @@ mod tests {
             Action::Last
         ));
     }
+
+    #[test]
+    fn down_and_enter_map_to_next() {
+        assert!(matches!(map_key(key(KeyCode::Down), false), Action::Next));
+        assert!(matches!(
+            map_key(key(KeyCode::Enter), false),
+            Action::Next
+        ));
+    }
+
+    #[test]
+    fn up_and_backspace_map_to_prev() {
+        assert!(matches!(map_key(key(KeyCode::Up), false), Action::Prev));
+        assert!(matches!(
+            map_key(key(KeyCode::Backspace), false),
+            Action::Prev
+        ));
+    }
+
+    #[test]
+    fn goto_backspace_in_goto_mode() {
+        assert!(matches!(
+            map_key(key(KeyCode::Backspace), true),
+            Action::GoToBackspace
+        ));
+    }
 }

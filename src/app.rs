@@ -115,7 +115,7 @@ impl App {
             image_cache: &mut self.image_cache,
             deferred: &mut self.deferred_images,
             base_dir: &self.base_dir,
-            highlighter: &self.highlighter,
+            highlighter: &mut self.highlighter,
             entrances: &mut self.entrances,
             slide_index: self.slide_index,
         };

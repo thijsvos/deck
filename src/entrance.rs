@@ -99,31 +99,7 @@ impl EntranceTracker {
     }
 }
 
-// ── Glitch character set (shared with transition.rs) ─────────────
-
-const GLITCH_CHARS: &[char] = &[
-    '!', '@', '#', '$', '%', '^', '&', '*', '<', '>', '{', '}', '[', ']', '|', '/', '\\', '~', '░',
-    '▒', '▓', '█', '▄', '▀', '▌', '▐',
-];
-
-// ── Simple RNG (same xorshift as transition.rs) ──────────────────
-
-struct Rng(u64);
-
-impl Rng {
-    fn new(seed: u64) -> Self {
-        Self(seed | 1)
-    }
-    fn next(&mut self) -> u64 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        self.0
-    }
-    fn next_f64(&mut self) -> f64 {
-        (self.next() % 10000) as f64 / 10000.0
-    }
-}
+use crate::util::{Rng, GLITCH_CHARS};
 
 // ── Entrance effect implementations ──────────────────────────────
 

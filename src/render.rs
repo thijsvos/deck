@@ -94,9 +94,9 @@ pub fn render_status_bar(
     let mins = elapsed_secs / 60;
     let secs = elapsed_secs % 60;
 
-    let left = format!(" {} ", title);
-    let center = format!(" {}/{} ", slide_num, total);
-    let right = format!(" {:02}:{:02} ", mins, secs);
+    let left = format!(" {title} ");
+    let center = format!(" {slide_num}/{total} ");
+    let right = format!(" {mins:02}:{secs:02} ");
 
     let width = area.width as usize;
     let used = left.len() + center.len() + right.len();
@@ -286,9 +286,9 @@ fn render_block(
                     Some(img) => img.clone(),
                     None => {
                         let label = if alt.is_empty() {
-                            format!("[Image: {}]", path)
+                            format!("[Image: {path}]")
                         } else {
-                            format!("[Image: {}]", alt)
+                            format!("[Image: {alt}]")
                         };
                         let line = Line::from(RSpan::styled(label, theme.rule_style()));
                         frame.render_widget(
@@ -349,7 +349,7 @@ fn spans_to_line(spans: &[Span], theme: &Theme) -> Line<'static> {
             Span::Plain(t) => RSpan::styled(t.clone(), theme.body_style()),
             Span::Bold(t) => RSpan::styled(t.clone(), theme.bold_style()),
             Span::Italic(t) => RSpan::styled(t.clone(), theme.italic_style()),
-            Span::Code(t) => RSpan::styled(format!("`{}`", t), theme.code_style()),
+            Span::Code(t) => RSpan::styled(format!("`{t}`"), theme.code_style()),
         })
         .collect();
     Line::from(rspans)

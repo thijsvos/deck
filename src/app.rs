@@ -384,7 +384,7 @@ fn render_goto(frame: &mut Frame, area: Rect, input: &str, theme: &Theme) {
 
     frame.render_widget(Clear, rect);
 
-    let text = format!(":{}_", input);
+    let text = format!(":{input}_");
     let block = WidgetBlock::default()
         .borders(Borders::ALL)
         .border_style(theme.status_accent())
@@ -414,7 +414,7 @@ mod tests {
         Block::BulletList {
             items: (0..n)
                 .map(|i| ListItem {
-                    spans: vec![Span::Plain(format!("item {}", i))],
+                    spans: vec![Span::Plain(format!("item {i}"))],
                 })
                 .collect(),
         }

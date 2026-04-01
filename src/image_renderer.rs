@@ -279,7 +279,7 @@ fn render_kitty<W: Write>(w: &mut W, d: &DeferredImage) -> std::io::Result<()> {
                     d.cols, d.rows, m, chunk_str
                 )?;
             } else {
-                write!(w, "\x1b_Gm={};{}\x1b\\", m, chunk_str)?;
+                write!(w, "\x1b_Gm={m};{chunk_str}\x1b\\")?;
             }
         }
     }

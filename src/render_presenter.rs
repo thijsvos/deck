@@ -91,7 +91,7 @@ pub fn render_presenter(
     let elapsed = timer.elapsed().as_secs();
     let mins = elapsed / 60;
     let secs = elapsed % 60;
-    let timer_text = format!("{:02}:{:02}", mins, secs);
+    let timer_text = format!("{mins:02}:{secs:02}");
 
     let timer_border = WidgetBlock::default()
         .borders(Borders::ALL)

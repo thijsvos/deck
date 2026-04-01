@@ -488,4 +488,25 @@ mod tests {
         // Each line should contain a space separator between H and I glyphs
         assert!(lines[0].contains(' '));
     }
+
+    #[test]
+    fn glyph_block_all_digits() {
+        for d in '0'..='9' {
+            assert!(glyph_block(d).is_some(), "glyph_block missing digit '{d}'");
+        }
+    }
+
+    #[test]
+    fn glyph_large_all_digits() {
+        for d in '0'..='9' {
+            assert!(glyph_large(d).is_some(), "glyph_large missing digit '{d}'");
+        }
+    }
+
+    #[test]
+    fn unsupported_char_returns_none() {
+        assert!(glyph_block('~').is_none());
+        assert!(glyph_block('(').is_none());
+        assert!(glyph_large('~').is_none());
+    }
 }

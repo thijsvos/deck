@@ -747,4 +747,38 @@ mod tests {
         assert_eq!(ch, ' ');
         assert_eq!(b, 0.0);
     }
+
+    #[test]
+    fn from_str_all_valid_names() {
+        let names = [
+            "matrix",
+            "plasma",
+            "lissajous",
+            "spiral",
+            "wave",
+            "aurora",
+            "rain",
+            "noise",
+            "lattice",
+            "orbit",
+        ];
+        for name in names {
+            assert!(
+                name.parse::<BackgroundKind>().is_ok(),
+                "failed to parse '{name}'"
+            );
+        }
+    }
+
+    #[test]
+    fn from_str_unknown_returns_err() {
+        assert!("fire".parse::<BackgroundKind>().is_err());
+        assert!("".parse::<BackgroundKind>().is_err());
+    }
+
+    #[test]
+    fn from_str_case_sensitive() {
+        assert!("Matrix".parse::<BackgroundKind>().is_err());
+        assert!("AURORA".parse::<BackgroundKind>().is_err());
+    }
 }

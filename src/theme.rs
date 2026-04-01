@@ -215,4 +215,32 @@ mod tests {
         assert_eq!(style.fg, Some(t.fg));
         assert_eq!(style.bg, Some(t.bg));
     }
+
+    #[test]
+    fn bold_style_has_bold_modifier() {
+        let t = Theme::from_name(&ThemeName::Hacker);
+        assert!(t.bold_style().add_modifier.contains(Modifier::BOLD));
+        assert_eq!(t.bold_style().fg, Some(t.bold));
+    }
+
+    #[test]
+    fn italic_style_has_italic_modifier() {
+        let t = Theme::from_name(&ThemeName::Hacker);
+        assert!(t.italic_style().add_modifier.contains(Modifier::ITALIC));
+        assert_eq!(t.italic_style().fg, Some(t.italic));
+    }
+
+    #[test]
+    fn code_style_uses_code_colors() {
+        let t = Theme::from_name(&ThemeName::Hacker);
+        assert_eq!(t.code_style().fg, Some(t.code_fg));
+        assert_eq!(t.code_style().bg, Some(t.code_bg));
+    }
+
+    #[test]
+    fn status_accent_uses_accent() {
+        let t = Theme::from_name(&ThemeName::Hacker);
+        assert_eq!(t.status_accent().fg, Some(t.accent));
+        assert_eq!(t.status_accent().bg, Some(t.bg));
+    }
 }

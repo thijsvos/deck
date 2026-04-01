@@ -762,4 +762,117 @@ mod tests {
 
         presenter_sync.cleanup();
     }
+
+    // handle_key: action coverage
+    #[test]
+    fn handle_key_toggle_presenter() {
+        let mut app = make_app(vec![dummy_slide(vec![])]);
+        assert!(matches!(app.mode, Mode::Normal));
+        app.handle_key(key(KeyCode::Char('p')));
+        assert!(matches!(app.mode, Mode::Presenter));
+        app.handle_key(key(KeyCode::Char('p')));
+        assert!(matches!(app.mode, Mode::Normal));
+    }
+
+    #[test]
+    fn handle_key_toggle_help() {
+        let mut app = make_app(vec![dummy_slide(vec![])]);
+        assert!(!app.show_help);
+        app.handle_key(key(KeyCode::Char('?')));
+        assert!(app.show_help);
+        app.handle_key(key(KeyCode::Char('?')));
+        assert!(!app.show_help);
+    }
+
+    #[test]
+    fn handle_key_goto_flow() {
+        let mut app = make_app(vec![
+            dummy_slide(vec![]),
+            dummy_slide(vec![]),
+            dummy_slide(vec![]),
+        ]);
+        // Enter goto mode
+        app.handle_key(key(KeyCode::Char(':')));
+        assert!(app.in_goto);
+        assert!(app.goto_input.is_empty());
+        // Type digits
+        app.handle_key(key(KeyCode::Char('2')));
+        assert_eq!(app.goto_input, "2");
+        // Confirm
+        app.handle_key(key(KeyCode::Enter));
+        assert!(!app.in_goto);
+        assert_eq!(app.slide_index, 1); // slide 2 = index 1
+    }
+
+    #[test]
+    fn handle_key_goto_confirm_invalid() {
+        let mut app = make_app(vec![dummy_slide(vec![]), dummy_slide(vec![])]);
+        app.in_goto = true;
+        app.goto_input = "abc".into();
+        app.handle_key(key(KeyCode::Enter));
+        assert!(!app.in_goto);
+        assert_eq!(app.slide_index, 0); // stays put
+    }
+
+    #[test]
+    fn handle_key_goto_cancel() {
+        let mut app = make_app(vec![dummy_slide(vec![])]);
+        app.in_goto = true;
+        app.goto_input = "5".into();
+        app.handle_key(key(KeyCode::Esc));
+        assert!(!app.in_goto);
+        assert!(app.goto_input.is_empty());
+    }
+
+    #[test]
+    fn handle_key_esc_closes_goto_first() {
+        let mut app = make_app(vec![dummy_slide(vec![])]);
+        app.in_goto = true;
+        assert!(!app.handle_key(key(KeyCode::Esc))); // Esc in goto = cancel, not quit
+        assert!(!app.in_goto);
+    }
+
+    #[test]
+    fn handle_key_reset_timer() {
+        let mut app = make_app(vec![dummy_slide(vec![])]);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let before = app.timer;
+        app.handle_key(key(KeyCode::Char('r')));
+        assert!(app.timer > before);
+    }
+
+    // State logic
+    #[test]
+    fn has_active_background_true() {
+        let mut slide = dummy_slide(vec![]);
+        slide.background = Some(crate::background::BackgroundKind::Matrix);
+        let app = make_app(vec![slide]);
+        assert!(app.has_active_background());
+    }
+
+    #[test]
+    fn has_active_background_false() {
+        let app = make_app(vec![dummy_slide(vec![])]);
+        assert!(!app.has_active_background());
+    }
+
+    #[test]
+    fn start_transition_uses_theme_default() {
+        let mut app = make_app(vec![dummy_slide(vec![]), dummy_slide(vec![])]);
+        // Default deck meta has TransitionKind::None, so theme default (Glitch) is used
+        app.go_to(1);
+        assert!(app.transition.is_some());
+    }
+
+    #[test]
+    fn tick_clears_finished_transition() {
+        let mut app = make_app(vec![dummy_slide(vec![])]);
+        app.transition = Some(crate::transition::TransitionState::new(
+            crate::transition::TransitionKind::Fade,
+        ));
+        // Set duration to zero so it's immediately done
+        app.transition.as_mut().unwrap().duration = std::time::Duration::ZERO;
+        app.tick();
+        assert!(app.transition.is_none());
+    }
 }

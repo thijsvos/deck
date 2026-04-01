@@ -270,4 +270,25 @@ mod tests {
         let mut b = Rng::new(42);
         assert_eq!(a.next(), b.next());
     }
+
+    #[test]
+    fn typewriter_visible_zero_progress() {
+        let (lines, frac) = typewriter_visible(0.0, 10);
+        assert_eq!(lines, 0);
+        assert!((frac - 0.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn typewriter_visible_over_one_clamps() {
+        let (lines, _) = typewriter_visible(1.5, 10);
+        assert_eq!(lines, 10); // min(15, 10) = 10
+    }
+
+    #[test]
+    fn tracker_has_active_with_running() {
+        let mut tracker = EntranceTracker::new();
+        tracker.on_slide_change(0);
+        tracker.get_or_start(0, 0, EntranceKind::Decrypt, Duration::from_secs(10));
+        assert!(tracker.has_active());
+    }
 }

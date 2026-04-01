@@ -297,4 +297,34 @@ mod tests {
             panic!("expected image, got {:?}", blocks[0]);
         }
     }
+
+    #[test]
+    fn parse_empty_input() {
+        let blocks = parse_blocks("");
+        assert!(blocks.is_empty());
+    }
+
+    #[test]
+    fn parse_code_block_no_language() {
+        let blocks = parse_blocks("```\nplain code\n```");
+        if let Block::Code { lang, code } = &blocks[0] {
+            assert!(lang.is_none());
+            assert!(code.contains("plain code"));
+        } else {
+            panic!("expected code block");
+        }
+    }
+
+    #[test]
+    fn parse_h3_through_h6() {
+        for level in 3..=6u8 {
+            let hashes = "#".repeat(level as usize);
+            let input = format!("{hashes} Level {level}");
+            let blocks = parse_blocks(&input);
+            assert!(
+                matches!(&blocks[0], Block::Heading { level: l, .. } if *l == level),
+                "H{level} not parsed correctly"
+            );
+        }
+    }
 }

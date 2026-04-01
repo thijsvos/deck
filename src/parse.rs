@@ -350,4 +350,31 @@ mod tests {
         assert!(deck.slides[0].background.is_some());
         assert!(deck.slides[1].background.is_none());
     }
+
+    #[test]
+    fn empty_input_produces_no_slides() {
+        let deck = parse_deck("");
+        assert!(deck.slides.is_empty());
+    }
+
+    #[test]
+    fn malformed_frontmatter_falls_back_to_defaults() {
+        let input = "---\nbad = [\n---\n# Slide";
+        let deck = parse_deck(input);
+        assert_eq!(deck.meta.title, "Untitled");
+    }
+
+    #[test]
+    fn multiple_notes_extracted() {
+        let input = "# Slide\n<!-- note: First -->\n<!-- note: Second -->";
+        let deck = parse_deck(input);
+        assert_eq!(deck.slides[0].notes, vec!["First", "Second"]);
+    }
+
+    #[test]
+    fn unknown_background_name_ignored() {
+        let input = "<!-- background: fire -->\n# Title";
+        let deck = parse_deck(input);
+        assert!(deck.slides[0].background.is_none());
+    }
 }

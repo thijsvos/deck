@@ -104,4 +104,25 @@ mod tests {
         let h = Highlighter::new();
         assert!(h.bg_color().is_some());
     }
+
+    #[test]
+    fn highlight_rust_keywords_have_color() {
+        let h = Highlighter::new();
+        let lines = h.highlight("fn main() {}", "rs");
+        // "fn" keyword should have a non-default foreground color
+        let first_span = &lines[0].spans[0];
+        assert!(
+            matches!(first_span.style.fg, Some(Color::Rgb(_, _, _))),
+            "expected RGB color on keyword"
+        );
+    }
+
+    #[test]
+    fn highlight_comment_produces_styled_span() {
+        let h = Highlighter::new();
+        let lines = h.highlight("// a comment", "rs");
+        assert!(!lines[0].spans.is_empty());
+        // Comment should have some foreground color
+        assert!(lines[0].spans[0].style.fg.is_some());
+    }
 }

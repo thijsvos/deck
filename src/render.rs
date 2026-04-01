@@ -88,10 +88,12 @@ pub fn render_slide(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_status_bar(
     frame: &mut Frame,
     area: Rect,
     title: &str,
+    author: Option<&str>,
     slide_num: usize,
     total: usize,
     elapsed_secs: u64,
@@ -100,7 +102,10 @@ pub fn render_status_bar(
     let mins = elapsed_secs / 60;
     let secs = elapsed_secs % 60;
 
-    let left = format!(" {title} ");
+    let left = match author {
+        Some(a) if !a.is_empty() => format!(" {title} — {a} "),
+        _ => format!(" {title} "),
+    };
     let center = format!(" {slide_num}/{total} ");
     let right = format!(" {mins:02}:{secs:02} ");
 
@@ -458,7 +463,6 @@ fn render_block(
 
             (consumed_rows + 1, Some(img_area))
         }
-        Block::Blank => (1, None),
     }
 }
 
@@ -505,7 +509,6 @@ fn estimate_height(blocks: &[Block], width: u16) -> u16 {
             Block::Code { code, .. } => code.lines().count() as u16 + 3,
             Block::HorizontalRule => 2,
             Block::Image { .. } => 8,
-            Block::Blank => 1,
         })
         .sum()
 }

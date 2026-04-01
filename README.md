@@ -4,11 +4,18 @@ Terminal presentations with style.
 
 A tiny, single-binary presentation tool written in Rust. Render Markdown slides in your terminal with animated mathematical backgrounds, a hacker aesthetic, progressive bullet reveal, column layouts, and a full presenter mode.
 
-**1.1 MB binary. No server. No dependencies. Just `deck talk.md`.**
+**~3 MB binary. No server. No dependencies. Just `deck talk.md`.**
 
 ## Features
 
 - **Markdown slides** with TOML frontmatter, separated by `---`
+- **Syntax highlighting** - ~50 languages via syntect (`base16-ocean.dark` theme)
+- **Cinematic block entrances** - every element animates onto the slide:
+  - H1 headings **decrypt** from glitch characters (`░▒▓█@#$` → text)
+  - H2+ headings **slide in** left-to-right
+  - Code blocks **typewrite** line-by-line with a blinking `▌` cursor
+  - Bullet points **cascade** with staggered timing
+  - Paragraphs and images **dissolve** in
 - **Big ASCII text** for `# H1` headings
 - **Progressive reveal** - bullet points appear one at a time
 - **Column layouts** - side-by-side content with `::: columns` syntax
@@ -17,7 +24,7 @@ A tiny, single-binary presentation tool written in Rust. Render Markdown slides 
 - **Presenter mode** (`p`) - current slide + next preview + notes + timer
 - **Dual-screen mode** - `--present` on your laptop, `--follow` on the projector
 - **10 animated backgrounds** - mathematical screensavers for your title slide
-- **Slide transitions** - glitch and fade effects
+- **Slide transitions** - glitch, fade, wipe, and dissolve effects
 - **4 themes** - `hacker` (default), `corporate`, `catppuccin`, and `minimal`
 - **Vim-style navigation** - arrow keys, hjkl, go-to-slide
 
@@ -137,6 +144,35 @@ Use HTML comments to configure individual slides:
 | `orbit` | Particles on tilted elliptical orbits | Circling dots with trails |
 
 Set in frontmatter (applies to first slide) or per-slide with `<!-- background: name -->`.
+
+## Block Entrances
+
+Every block on a slide gets a cinematic entrance animation when the slide first appears. No configuration needed — effects are assigned automatically by block type.
+
+| Block | Effect | Duration |
+|-------|--------|----------|
+| `# H1` heading | **Decrypt** — glitch characters resolve into ASCII art | 600ms |
+| `## H2+` heading | **Slide-in** — text reveals left-to-right | 300ms |
+| Code block | **Typewriter** — syntax-highlighted lines type one-by-one with `▌` cursor | ~50ms per line |
+| Bullet item | **Cascade** — staggered fade-in, 100ms delay between items | 200ms each |
+| Paragraph | **Fade-in** — smoothstep dissolve | 250ms |
+| Image | **Fade-in** — smoothstep dissolve | 300ms |
+
+Entrances replay each time you navigate to a slide. The frame rate automatically elevates to 60fps while animations are active, then drops back to save CPU.
+
+## Syntax Highlighting
+
+Code blocks are syntax-highlighted for ~50 languages using [syntect](https://github.com/trishume/syntect) with the `base16-ocean.dark` theme. The language is detected from the fenced code block tag:
+
+````markdown
+```rust
+fn main() {
+    println!("highlighted!");
+}
+```
+````
+
+Combined with the typewriter entrance, code blocks type themselves out in full color — great for walking an audience through code step by step.
 
 ## Keyboard Shortcuts
 

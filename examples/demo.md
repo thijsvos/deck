@@ -57,12 +57,23 @@ or contrasting ideas.
 ## Code Blocks
 
 ```rust
-fn main() {
-    println!("Hello from deck!");
+use std::collections::HashMap;
+
+fn fibonacci(n: u64) -> u64 {
+    let mut cache: HashMap<u64, u64> = HashMap::new();
+    fib_cached(n, &mut cache)
+}
+
+fn fib_cached(n: u64, cache: &mut HashMap<u64, u64>) -> u64 {
+    if n <= 1 { return n; }
+    if let Some(&val) = cache.get(&n) { return val; }
+    let result = fib_cached(n - 1, cache) + fib_cached(n - 2, cache);
+    cache.insert(n, result);
+    result
 }
 ```
 
-Syntax-highlighted code with clean borders.
+Syntax-highlighted with animated typewriter entrance.
 
 ---
 

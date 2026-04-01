@@ -572,4 +572,113 @@ mod tests {
         assert!(!app.handle_key(key(KeyCode::Right))); // ignored
         assert_eq!(app.slide_index, 0); // didn't move
     }
+
+    #[test]
+    fn presenter_writes_sync_follower_reads() {
+        use crate::sync::SyncFile;
+
+        let sync_path = "/__deck_test_sync_presenter_follower__";
+
+        let mk_slides = || vec![
+            dummy_slide(vec![Block::Heading { level: 1, text: "One".into() }]),
+            dummy_slide(vec![Block::Heading { level: 1, text: "Two".into() }]),
+            dummy_slide(vec![Block::Heading { level: 1, text: "Three".into() }]),
+        ];
+
+        let presenter_sync = SyncFile::for_file(sync_path);
+        let theme = Theme::from_name(&crate::theme::ThemeName::Hacker);
+        let mut presenter = App::new(
+            make_deck(mk_slides()), theme,
+            Some(SyncFile::for_file(sync_path)),
+            false, ImageProtocol::HalfBlocks, std::path::PathBuf::from("."),
+        );
+        let theme2 = Theme::from_name(&crate::theme::ThemeName::Hacker);
+        let mut follower = App::new(
+            make_deck(mk_slides()), theme2,
+            Some(SyncFile::for_file(sync_path)),
+            true, ImageProtocol::HalfBlocks, std::path::PathBuf::from("."),
+        );
+
+        assert_eq!(presenter.slide_index, 0);
+        assert_eq!(follower.slide_index, 0);
+
+        // Presenter advances to slide 1
+        presenter.advance();
+        assert_eq!(presenter.slide_index, 1);
+        follower.tick();
+        assert_eq!(follower.slide_index, 1, "follower should sync to slide 1");
+
+        // Presenter advances to slide 2
+        presenter.advance();
+        assert_eq!(presenter.slide_index, 2);
+        follower.tick();
+        assert_eq!(follower.slide_index, 2, "follower should sync to slide 2");
+
+        presenter_sync.cleanup();
+    }
+
+    #[test]
+    fn presenter_sync_with_bullet_reveals() {
+        use crate::sync::SyncFile;
+
+        let sync_path = "/__deck_test_sync_bullet_reveal__";
+
+        let mk_slides = || vec![
+            dummy_slide(vec![Block::Heading { level: 1, text: "Title".into() }]),
+            dummy_slide(vec![
+                Block::Heading { level: 2, text: "Bullets".into() },
+                bullet_list(3),
+            ]),
+            dummy_slide(vec![Block::Heading { level: 1, text: "End".into() }]),
+        ];
+
+        let presenter_sync = SyncFile::for_file(sync_path);
+        let theme = Theme::from_name(&crate::theme::ThemeName::Hacker);
+        let mut presenter = App::new(
+            make_deck(mk_slides()), theme,
+            Some(SyncFile::for_file(sync_path)),
+            false, ImageProtocol::HalfBlocks, std::path::PathBuf::from("."),
+        );
+        let theme2 = Theme::from_name(&crate::theme::ThemeName::Hacker);
+        let mut follower = App::new(
+            make_deck(mk_slides()), theme2,
+            Some(SyncFile::for_file(sync_path)),
+            true, ImageProtocol::HalfBlocks, std::path::PathBuf::from("."),
+        );
+
+        // Advance from title to bullets slide
+        presenter.advance();
+        assert_eq!(presenter.slide_index, 1);
+        assert_eq!(presenter.reveal_count, 0); // bullets hidden initially
+        follower.tick();
+        assert_eq!(follower.slide_index, 1);
+        assert_eq!(follower.reveal_count, 0);
+
+        // Reveal bullet 1
+        presenter.advance();
+        assert_eq!(presenter.slide_index, 1);
+        assert_eq!(presenter.reveal_count, 1);
+        follower.tick();
+        assert_eq!(follower.reveal_count, 1, "follower should sync reveal to 1");
+
+        // Reveal bullet 2
+        presenter.advance();
+        assert_eq!(presenter.reveal_count, 2);
+        follower.tick();
+        assert_eq!(follower.reveal_count, 2, "follower should sync reveal to 2");
+
+        // Reveal bullet 3
+        presenter.advance();
+        assert_eq!(presenter.reveal_count, 3);
+        follower.tick();
+        assert_eq!(follower.reveal_count, 3, "follower should sync reveal to 3");
+
+        // Advance to next slide (all bullets revealed)
+        presenter.advance();
+        assert_eq!(presenter.slide_index, 2);
+        follower.tick();
+        assert_eq!(follower.slide_index, 2, "follower should sync to slide 2");
+
+        presenter_sync.cleanup();
+    }
 }

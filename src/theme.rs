@@ -4,7 +4,7 @@ use serde::Deserialize;
 use crate::bigtext::FontStyle;
 use crate::transition::TransitionKind;
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeName {
     #[default]

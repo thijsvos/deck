@@ -11,25 +11,32 @@ pub struct SyncFile {
 
 impl SyncFile {
     /// Derive a deterministic sync file path from the presentation file path.
+    /// Uses a user-private directory to prevent symlink attacks.
     pub fn for_file(input_path: &str) -> Self {
         let hash = simple_hash(input_path);
-        let path = std::env::temp_dir().join(format!("deck-{:016x}.sync", hash));
+        let dir = sync_dir();
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join(format!("deck-{:016x}.sync", hash));
         Self { path }
     }
 
     /// Write current state. Uses write-then-rename for atomicity.
     pub fn write(&self, slide: usize, reveal: usize) {
-        let tmp = self.path.with_extension("tmp");
+        let tmp = self.path.with_extension(format!("tmp.{}", std::process::id()));
         if let Ok(mut f) = fs::File::create(&tmp) {
-            let _ = writeln!(f, "{} {}", slide, reveal);
-            let _ = fs::rename(&tmp, &self.path);
+            if writeln!(f, "{} {}", slide, reveal).is_ok() {
+                let _ = f.flush();
+                let _ = fs::rename(&tmp, &self.path);
+            } else {
+                let _ = fs::remove_file(&tmp);
+            }
         }
     }
 
     /// Read current state from the sync file.
     pub fn read(&self) -> Option<(usize, usize)> {
         let content = fs::read_to_string(&self.path).ok()?;
-        let mut parts = content.trim().split_whitespace();
+        let mut parts = content.split_whitespace();
         let slide = parts.next()?.parse().ok()?;
         let reveal = parts.next()?.parse().ok()?;
         Some((slide, reveal))
@@ -38,8 +45,24 @@ impl SyncFile {
     /// Remove the sync file.
     pub fn cleanup(&self) {
         let _ = fs::remove_file(&self.path);
-        let _ = fs::remove_file(self.path.with_extension("tmp"));
+        // Clean up any leftover tmp file from this process
+        let tmp = self.path.with_extension(format!("tmp.{}", std::process::id()));
+        let _ = fs::remove_file(&tmp);
     }
+}
+
+/// User-private directory for sync files.
+fn sync_dir() -> PathBuf {
+    // Prefer XDG_RUNTIME_DIR (Linux, user-private, tmpfs)
+    if let Ok(dir) = std::env::var("XDG_RUNTIME_DIR") {
+        return PathBuf::from(dir).join("deck");
+    }
+    // Fallback: user cache/config dir
+    if let Some(home) = std::env::var_os("HOME") {
+        return PathBuf::from(home).join(".cache").join("deck");
+    }
+    // Last resort: temp dir (less secure but functional)
+    std::env::temp_dir().join("deck")
 }
 
 fn simple_hash(s: &str) -> u64 {
@@ -92,5 +115,12 @@ mod tests {
         assert!(sync.path.exists());
         sync.cleanup();
         assert!(!sync.path.exists());
+    }
+
+    #[test]
+    fn sync_dir_is_not_tmp_root() {
+        let dir = sync_dir();
+        // Should be inside a "deck" subdirectory, not directly in /tmp
+        assert!(dir.ends_with("deck"));
     }
 }

@@ -36,8 +36,8 @@ struct Cli {
     file: String,
 
     /// Theme: hacker (default), corporate, catppuccin, or minimal
-    #[arg(long)]
-    theme: Option<String>,
+    #[arg(long, value_enum)]
+    theme: Option<ThemeName>,
 
     /// Presenter screen: shows notes + timer, controls navigation. Syncs to --follow instances.
     #[arg(long, conflicts_with = "follow")]
@@ -65,16 +65,7 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
 
-    let theme_name = cli
-        .theme
-        .as_deref()
-        .map(|t| match t {
-            "minimal" => ThemeName::Minimal,
-            "corporate" => ThemeName::Corporate,
-            "catppuccin" => ThemeName::Catppuccin,
-            _ => ThemeName::Hacker,
-        })
-        .unwrap_or(deck.meta.theme.clone());
+    let theme_name = cli.theme.unwrap_or(deck.meta.theme.clone());
 
     let theme = Theme::from_name(&theme_name);
     let protocol = image_renderer::detect_protocol();

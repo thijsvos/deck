@@ -13,16 +13,21 @@ use crate::markdown::{Block, Span};
 use crate::parse::{Layout, Slide};
 use crate::theme::Theme;
 
+/// Shared rendering context to avoid passing many parameters individually.
+pub struct RenderCtx<'a> {
+    pub protocol: ImageProtocol,
+    pub image_cache: &'a mut ImageCache,
+    pub deferred: &'a mut Vec<DeferredImage>,
+    pub base_dir: &'a Path,
+}
+
 pub fn render_slide(
     frame: &mut Frame,
     area: Rect,
     slide: &Slide,
     theme: &Theme,
     reveal: usize,
-    protocol: ImageProtocol,
-    image_cache: &mut ImageCache,
-    deferred: &mut Vec<DeferredImage>,
-    base_dir: &Path,
+    ctx: &mut RenderCtx,
 ) {
     // Fill background
     let bg = WidgetBlock::default().style(theme.body_style());
@@ -32,7 +37,7 @@ pub fn render_slide(
 
     match slide.layout {
         Layout::Default => {
-            render_blocks(frame, content, &slide.blocks, theme, reveal, protocol, image_cache, deferred, base_dir);
+            render_blocks(frame, content, &slide.blocks, theme, reveal, ctx);
         }
         Layout::Center => {
             let total_height = estimate_height(&slide.blocks, content.width);
@@ -42,7 +47,7 @@ pub fn render_slide(
                 height: total_height.min(content.height),
                 ..content
             };
-            render_blocks(frame, centered, &slide.blocks, theme, reveal, protocol, image_cache, deferred, base_dir);
+            render_blocks(frame, centered, &slide.blocks, theme, reveal, ctx);
         }
         Layout::Columns => {
             let mut y = content.y;
@@ -53,7 +58,7 @@ pub fn render_slide(
                     content.width,
                     content.height.saturating_sub(y - content.y),
                 );
-                let h = render_block(frame, remaining, block, theme, protocol, image_cache, deferred, base_dir);
+                let h = render_block(frame, remaining, block, theme, ctx);
                 y += h;
             }
 
@@ -70,8 +75,8 @@ pub fn render_slide(
                     .spacing(2)
                     .split(col_area);
 
-                render_blocks(frame, halves[0], &cols.left, theme, usize::MAX, protocol, image_cache, deferred, base_dir);
-                render_blocks(frame, halves[1], &cols.right, theme, usize::MAX, protocol, image_cache, deferred, base_dir);
+                render_blocks(frame, halves[0], &cols.left, theme, usize::MAX, ctx);
+                render_blocks(frame, halves[1], &cols.right, theme, usize::MAX, ctx);
             }
         }
     }
@@ -118,10 +123,7 @@ fn render_blocks(
     blocks: &[Block],
     theme: &Theme,
     reveal: usize,
-    protocol: ImageProtocol,
-    image_cache: &mut ImageCache,
-    deferred: &mut Vec<DeferredImage>,
-    base_dir: &Path,
+    ctx: &mut RenderCtx,
 ) {
     let mut y = area.y;
     let mut bullet_count: usize = 0;
@@ -162,7 +164,7 @@ fn render_blocks(
                 }
             }
             _ => {
-                let h = render_block(frame, remaining, block, theme, protocol, image_cache, deferred, base_dir);
+                let h = render_block(frame, remaining, block, theme, ctx);
                 y += h;
             }
         }
@@ -174,10 +176,7 @@ fn render_block(
     area: Rect,
     block: &Block,
     theme: &Theme,
-    protocol: ImageProtocol,
-    image_cache: &mut ImageCache,
-    deferred: &mut Vec<DeferredImage>,
-    base_dir: &Path,
+    ctx: &mut RenderCtx,
 ) -> u16 {
     match block {
         Block::Heading { level: 1, text } => {
@@ -245,7 +244,7 @@ fn render_block(
             }
             h
         }
-        Block::CodeBlock { lang, code } => {
+        Block::Code { lang, code } => {
             let title = lang.as_deref().unwrap_or("");
             let inner_height = code.lines().count() as u16;
             let total_height = inner_height + 2;
@@ -272,8 +271,8 @@ fn render_block(
         }
         Block::Image { path, alt } => {
             // Load, resize, and cache — only resizes once per (path, size)
-            let resized = match image_cache.get_resized(path, base_dir, area.width, area.height) {
-                Some(img) => img,
+            let resized = match ctx.image_cache.get_resized(path, ctx.base_dir, area.width, area.height) {
+                Some(img) => img.clone(),
                 None => {
                     let label = if alt.is_empty() {
                         format!("[Image: {}]", path)
@@ -287,7 +286,7 @@ fn render_block(
             };
 
             let (px_w, px_h) = resized.dimensions();
-            let consumed_rows = ((px_h + 1) / 2) as u16;
+            let consumed_rows = px_h.div_ceil(2) as u16;
             let consumed_cols = px_w as u16;
 
             // Center horizontally
@@ -301,17 +300,24 @@ fn render_block(
 
             // Always render half-blocks into the buffer
             let buf = frame.buffer_mut();
-            image_renderer::render_halfblocks(buf, img_area, resized);
+            image_renderer::render_halfblocks(buf, img_area, &resized);
 
             // Queue deferred high-res render for Kitty/Sixel
-            if matches!(protocol, ImageProtocol::Kitty | ImageProtocol::Sixel) {
-                deferred.push(DeferredImage {
+            if matches!(ctx.protocol, ImageProtocol::Kitty | ImageProtocol::Sixel) {
+                let kitty_b64 = if ctx.protocol == ImageProtocol::Kitty {
+                    ctx.image_cache.get_encoded_kitty(path, ctx.base_dir, area.width, area.height)
+                        .map(|s| s.to_string())
+                } else {
+                    None
+                };
+                ctx.deferred.push(DeferredImage {
                     x: img_area.x,
                     y: img_area.y,
                     cols: consumed_cols,
                     rows: consumed_rows.min(area.height),
-                    rgba: resized.clone(),
-                    protocol,
+                    rgba: resized,
+                    protocol: ctx.protocol,
+                    kitty_b64,
                 });
             }
 
@@ -339,7 +345,8 @@ fn estimate_line_height(line: &Line, width: u16) -> u16 {
         return 1;
     }
     let text_width: usize = line.spans.iter().map(|s| s.content.len()).sum();
-    ((text_width as u16).saturating_add(width - 1) / width).max(1)
+    let w = width as usize;
+    text_width.div_ceil(w).max(1).min(u16::MAX as usize) as u16
 }
 
 fn estimate_height(blocks: &[Block], width: u16) -> u16 {
@@ -358,11 +365,11 @@ fn estimate_height(blocks: &[Block], width: u16) -> u16 {
                     })
                     .sum();
                 let w = width.max(1) as usize;
-                ((text_len + w - 1) / w).max(1) as u16 + 1
+                text_len.div_ceil(w).max(1) as u16 + 1
             }
             Block::BulletList { items } => items.len() as u16,
             Block::NumberedList { items } => items.len() as u16,
-            Block::CodeBlock { code, .. } => code.lines().count() as u16 + 3,
+            Block::Code { code, .. } => code.lines().count() as u16 + 3,
             Block::HorizontalRule => 2,
             Block::Image { .. } => 8,
             Block::Blank => 1,
@@ -376,5 +383,90 @@ fn padded(area: Rect, h_pad: u16, v_pad: u16) -> Rect {
         y: area.y + v_pad,
         width: area.width.saturating_sub(h_pad * 2),
         height: area.height.saturating_sub(v_pad * 2),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn estimate_line_height_zero_width() {
+        let line = Line::from("hello");
+        assert_eq!(estimate_line_height(&line, 0), 1);
+    }
+
+    #[test]
+    fn estimate_line_height_fits_in_one_row() {
+        let line = Line::from("hello");
+        assert_eq!(estimate_line_height(&line, 80), 1);
+    }
+
+    #[test]
+    fn estimate_line_height_wraps() {
+        let line = Line::from("a".repeat(200));
+        assert_eq!(estimate_line_height(&line, 80), 3); // ceil(200/80) = 3
+    }
+
+    #[test]
+    fn estimate_line_height_exact_fit() {
+        let line = Line::from("a".repeat(80));
+        assert_eq!(estimate_line_height(&line, 80), 1);
+    }
+
+    #[test]
+    fn estimate_line_height_empty() {
+        let line = Line::from("");
+        assert_eq!(estimate_line_height(&line, 80), 1);
+    }
+
+    #[test]
+    fn padded_shrinks_area() {
+        let area = Rect::new(0, 0, 100, 50);
+        let p = padded(area, 3, 2);
+        assert_eq!(p.x, 3);
+        assert_eq!(p.y, 2);
+        assert_eq!(p.width, 94);
+        assert_eq!(p.height, 46);
+    }
+
+    #[test]
+    fn padded_handles_small_area() {
+        let area = Rect::new(0, 0, 4, 2);
+        let p = padded(area, 3, 2);
+        assert_eq!(p.width, 0);
+        assert_eq!(p.height, 0);
+    }
+
+    #[test]
+    fn estimate_height_heading() {
+        let blocks = vec![Block::Heading { level: 1, text: "Hi".into() }];
+        assert_eq!(estimate_height(&blocks, 80), 8);
+    }
+
+    #[test]
+    fn estimate_height_paragraph() {
+        let blocks = vec![Block::Paragraph {
+            spans: vec![Span::Plain("hello world".into())],
+        }];
+        // ceil(11/80) = 1, +1 spacing = 2
+        assert_eq!(estimate_height(&blocks, 80), 2);
+    }
+
+    #[test]
+    fn estimate_height_empty() {
+        let blocks: Vec<Block> = vec![];
+        assert_eq!(estimate_height(&blocks, 80), 0);
+    }
+
+    #[test]
+    fn spans_to_line_maps_styles() {
+        let theme = crate::theme::Theme::from_name(&crate::theme::ThemeName::Hacker);
+        let spans = vec![
+            Span::Plain("hello ".into()),
+            Span::Bold("world".into()),
+        ];
+        let line = spans_to_line(&spans, &theme);
+        assert_eq!(line.spans.len(), 2);
     }
 }

@@ -12,12 +12,13 @@ pub struct Deck {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct DeckMeta {
     #[serde(default = "default_title")]
     pub title: String,
+    #[allow(dead_code)]
     #[serde(default)]
     pub author: Option<String>,
+    #[allow(dead_code)]
     #[serde(default)]
     pub date: Option<String>,
     #[serde(default)]
@@ -92,11 +93,10 @@ pub fn parse_deck(input: &str) -> Deck {
 
 fn extract_frontmatter(input: &str) -> (DeckMeta, String) {
     let trimmed = input.trim_start();
-    if !trimmed.starts_with("---") {
-        return (DeckMeta::default(), input.to_string());
-    }
-
-    let after_first = &trimmed[3..];
+    let after_first = match trimmed.strip_prefix("---") {
+        Some(rest) => rest,
+        None => return (DeckMeta::default(), input.to_string()),
+    };
     let after_first = after_first.trim_start_matches(['\n', '\r']);
 
     if let Some(end) = after_first.find("\n---") {
@@ -267,19 +267,7 @@ fn extract_background(raw: &str) -> (String, Option<BackgroundKind>) {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("<!-- background:") {
             if let Some(name) = rest.strip_suffix("-->") {
-                bg = match name.trim() {
-                    "matrix" => Some(BackgroundKind::Matrix),
-                    "plasma" => Some(BackgroundKind::Plasma),
-                    "lissajous" => Some(BackgroundKind::Lissajous),
-                    "spiral" => Some(BackgroundKind::Spiral),
-                    "wave" => Some(BackgroundKind::Wave),
-                    "aurora" => Some(BackgroundKind::Aurora),
-                    "rain" => Some(BackgroundKind::Rain),
-                    "noise" => Some(BackgroundKind::Noise),
-                    "lattice" => Some(BackgroundKind::Lattice),
-                    "orbit" => Some(BackgroundKind::Orbit),
-                    _ => None,
-                };
+                bg = name.trim().parse().ok();
                 continue;
             }
         }

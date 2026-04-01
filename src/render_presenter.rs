@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::time::Instant;
 
 use ratatui::{
@@ -8,11 +7,11 @@ use ratatui::{
     Frame,
 };
 
-use crate::image_renderer::{DeferredImage, ImageCache, ImageProtocol};
 use crate::parse::Deck;
-use crate::render;
+use crate::render::{self, RenderCtx};
 use crate::theme::Theme;
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_presenter(
     frame: &mut Frame,
     area: Rect,
@@ -21,10 +20,7 @@ pub fn render_presenter(
     reveal_count: usize,
     theme: &Theme,
     timer: &Instant,
-    protocol: ImageProtocol,
-    image_cache: &mut ImageCache,
-    deferred: &mut Vec<DeferredImage>,
-    base_dir: &Path,
+    ctx: &mut RenderCtx,
 ) {
     // Top 70% for slides, bottom 30% for notes/timer
     let rows = RLayout::default()
@@ -53,7 +49,7 @@ pub fn render_presenter(
     frame.render_widget(current_border, cols[0]);
 
     let slide = &deck.slides[slide_index];
-    render::render_slide(frame, inner, slide, theme, reveal_count, protocol, image_cache, deferred, base_dir);
+    render::render_slide(frame, inner, slide, theme, reveal_count, ctx);
 
     // -- Next slide preview --
     let next_border = WidgetBlock::default()
@@ -64,7 +60,7 @@ pub fn render_presenter(
     frame.render_widget(next_border, cols[1]);
 
     if let Some(next_slide) = deck.slides.get(slide_index + 1) {
-        render::render_slide(frame, inner, next_slide, theme, usize::MAX, protocol, image_cache, deferred, base_dir);
+        render::render_slide(frame, inner, next_slide, theme, usize::MAX, ctx);
     } else {
         let msg = Line::from(RSpan::styled("  End of deck", theme.rule_style()));
         frame.render_widget(Paragraph::new(msg), inner);

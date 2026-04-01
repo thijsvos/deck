@@ -10,6 +10,7 @@ pub enum Action {
     StartGoTo,
     GoToConfirm,
     GoToDigit(char),
+    GoToBackspace,
     GoToCancel,
     ResetTimer,
     Quit,
@@ -22,7 +23,7 @@ pub fn map_key(key: KeyEvent, in_goto: bool) -> Action {
             KeyCode::Enter => Action::GoToConfirm,
             KeyCode::Esc => Action::GoToCancel,
             KeyCode::Char(c) if c.is_ascii_digit() => Action::GoToDigit(c),
-            KeyCode::Backspace => Action::GoToDigit('\x08'),
+            KeyCode::Backspace => Action::GoToBackspace,
             _ => Action::None,
         };
     }

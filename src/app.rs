@@ -53,6 +53,7 @@ impl App {
         protocol: ImageProtocol,
         base_dir: PathBuf,
     ) -> Self {
+        assert!(!deck.slides.is_empty(), "deck must have at least one slide");
         let reveal = initial_reveal(&deck.slides[0]);
         let now = Instant::now();
         Self {
@@ -102,13 +103,20 @@ impl App {
         let main_area = chunks[0];
         let status_area = chunks[1];
 
+        let mut ctx = render::RenderCtx {
+            protocol: self.protocol,
+            image_cache: &mut self.image_cache,
+            deferred: &mut self.deferred_images,
+            base_dir: &self.base_dir,
+        };
+
         // Render slide
         match self.mode {
             Mode::Normal => {
                 let slide = &self.deck.slides[self.slide_index];
                 render::render_slide(
                     frame, main_area, slide, &self.theme, self.reveal_count,
-                    self.protocol, &mut self.image_cache, &mut self.deferred_images, &self.base_dir,
+                    &mut ctx,
                 );
 
                 // Animated background fills empty cells around content
@@ -122,7 +130,7 @@ impl App {
                     frame, main_area,
                     &self.deck, self.slide_index, self.reveal_count,
                     &self.theme, &self.timer,
-                    self.protocol, &mut self.image_cache, &mut self.deferred_images, &self.base_dir,
+                    &mut ctx,
                 );
             }
         }
@@ -190,11 +198,10 @@ impl App {
                 self.goto_input.clear();
             }
             Action::GoToDigit(c) => {
-                if c == '\x08' {
-                    self.goto_input.pop();
-                } else {
-                    self.goto_input.push(c);
-                }
+                self.goto_input.push(c);
+            }
+            Action::GoToBackspace => {
+                self.goto_input.pop();
             }
             Action::GoToConfirm => {
                 if let Ok(n) = self.goto_input.parse::<usize>() {

@@ -19,6 +19,26 @@ pub enum BackgroundKind {
     Orbit,
 }
 
+impl std::str::FromStr for BackgroundKind {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "matrix" => Ok(Self::Matrix),
+            "plasma" => Ok(Self::Plasma),
+            "lissajous" => Ok(Self::Lissajous),
+            "spiral" => Ok(Self::Spiral),
+            "wave" => Ok(Self::Wave),
+            "aurora" => Ok(Self::Aurora),
+            "rain" => Ok(Self::Rain),
+            "noise" => Ok(Self::Noise),
+            "lattice" => Ok(Self::Lattice),
+            "orbit" => Ok(Self::Orbit),
+            _ => Err(()),
+        }
+    }
+}
+
 /// Apply animated background into empty (space) cells of the buffer.
 /// Call this AFTER the slide content has been rendered so the background
 /// only fills the gaps around text.
@@ -213,8 +233,31 @@ fn apply_lissajous(frame: &mut Frame, area: Rect, time: f64, theme: &Theme) {
         return;
     }
 
-    // Pre-compute brightness grid by scattering curve points
-    let mut grid = vec![0.0f64; w * h];
+    // Reuse thread-local grid to avoid allocation every frame
+    thread_local! {
+        static GRID: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+    GRID.with(|g| {
+        let mut grid = g.borrow_mut();
+        let size = w * h;
+        if grid.len() != size {
+            grid.resize(size, 0.0);
+        } else {
+            grid.fill(0.0);
+        }
+        apply_lissajous_inner(frame, area, time, theme, w, h, &mut grid);
+    });
+}
+
+fn apply_lissajous_inner(
+    frame: &mut Frame,
+    area: Rect,
+    time: f64,
+    theme: &Theme,
+    w: usize,
+    h: usize,
+    grid: &mut [f64],
+) {
     let cx = w as f64 / 2.0;
     let cy = h as f64 / 2.0;
 
@@ -331,10 +374,9 @@ fn wave_cell(x: u16, y: u16, w: u16, h: u16, t: f64) -> (char, f64) {
 //    ★ Best suited for title pages with centred text ★
 // ════════════════════════════════════════════════════════════════════
 
-fn aurora_cell(x: u16, y: u16, w: u16, h: u16, t: f64) -> (char, f64) {
+fn aurora_cell(x: u16, y: u16, _w: u16, h: u16, t: f64) -> (char, f64) {
     let fx = x as f64;
     let fy = y as f64;
-    let _fw = w as f64;
     let fh = h as f64;
     let t = t * 0.18;
 
@@ -489,7 +531,30 @@ fn apply_orbit(frame: &mut Frame, area: Rect, time: f64, theme: &Theme) {
         return;
     }
 
-    let mut grid = vec![0.0f64; w * h];
+    thread_local! {
+        static GRID: std::cell::RefCell<Vec<f64>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+    GRID.with(|g| {
+        let mut grid = g.borrow_mut();
+        let size = w * h;
+        if grid.len() != size {
+            grid.resize(size, 0.0);
+        } else {
+            grid.fill(0.0);
+        }
+        apply_orbit_inner(frame, area, time, theme, w, h, &mut grid);
+    });
+}
+
+fn apply_orbit_inner(
+    frame: &mut Frame,
+    area: Rect,
+    time: f64,
+    theme: &Theme,
+    w: usize,
+    h: usize,
+    grid: &mut [f64],
+) {
     let cx = w as f64 / 2.0;
     let cy = h as f64 / 2.0;
 

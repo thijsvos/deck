@@ -1,6 +1,8 @@
 mod app;
 mod background;
 mod bigtext;
+mod entrance;
+mod highlight;
 mod image_renderer;
 mod input;
 mod markdown;
@@ -106,8 +108,8 @@ fn main() -> io::Result<()> {
             terminal.backend_mut().flush()?;
         }
 
-        let timeout = if app.transition.is_some() {
-            Duration::from_millis(16) // 60fps during transitions
+        let timeout = if app.transition.is_some() || app.entrances.has_active() {
+            Duration::from_millis(16) // 60fps during transitions/entrances
         } else if app.has_active_background() || app.is_follower {
             Duration::from_millis(33) // ~30fps for backgrounds or sync polling
         } else {

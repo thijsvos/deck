@@ -9,6 +9,8 @@ use ratatui::{
 };
 
 use crate::background;
+use crate::entrance::EntranceTracker;
+use crate::highlight::Highlighter;
 use crate::image_renderer::{DeferredImage, ImageCache, ImageProtocol};
 use crate::input::{map_key, Action};
 use crate::markdown::Block;
@@ -42,6 +44,8 @@ pub struct App {
     pub image_cache: ImageCache,
     pub deferred_images: Vec<DeferredImage>,
     pub base_dir: PathBuf,
+    pub highlighter: Highlighter,
+    pub entrances: EntranceTracker,
 }
 
 impl App {
@@ -74,6 +78,8 @@ impl App {
             image_cache: ImageCache::new(),
             deferred_images: Vec::new(),
             base_dir,
+            highlighter: Highlighter::new(),
+            entrances: EntranceTracker::new(),
         }
     }
 
@@ -92,6 +98,7 @@ impl App {
 
     pub fn draw(&mut self, frame: &mut Frame) {
         self.deferred_images.clear();
+        self.entrances.on_slide_change(self.slide_index);
 
         let area = frame.area();
 
@@ -108,6 +115,9 @@ impl App {
             image_cache: &mut self.image_cache,
             deferred: &mut self.deferred_images,
             base_dir: &self.base_dir,
+            highlighter: &self.highlighter,
+            entrances: &mut self.entrances,
+            slide_index: self.slide_index,
         };
 
         // Render slide

@@ -2,12 +2,15 @@ use std::path::Path;
 
 use ratatui::{
     layout::{Constraint, Direction, Layout as RLayout, Rect},
+    style::Style,
     text::{Line, Span as RSpan},
     widgets::{Block as WidgetBlock, Borders, Paragraph, Wrap},
     Frame,
 };
 
 use crate::bigtext;
+use crate::entrance::{self, EntranceKind, EntranceTracker};
+use crate::highlight::Highlighter;
 use crate::image_renderer::{self, DeferredImage, ImageCache, ImageProtocol};
 use crate::markdown::{Block, Span};
 use crate::parse::{Layout, Slide};
@@ -19,6 +22,9 @@ pub struct RenderCtx<'a> {
     pub image_cache: &'a mut ImageCache,
     pub deferred: &'a mut Vec<DeferredImage>,
     pub base_dir: &'a Path,
+    pub highlighter: &'a Highlighter,
+    pub entrances: &'a mut EntranceTracker,
+    pub slide_index: usize,
 }
 
 pub fn render_slide(
@@ -51,14 +57,14 @@ pub fn render_slide(
         }
         Layout::Columns => {
             let mut y = content.y;
-            for block in &slide.blocks {
+            for (i, block) in slide.blocks.iter().enumerate() {
                 let remaining = Rect::new(
                     content.x,
                     y,
                     content.width,
                     content.height.saturating_sub(y - content.y),
                 );
-                let h = render_block(frame, remaining, block, theme, ctx);
+                let (h, _) = render_block(frame, remaining, block, theme, ctx, i);
                 y += h;
             }
 
@@ -128,7 +134,7 @@ fn render_blocks(
     let mut y = area.y;
     let mut bullet_count: usize = 0;
 
-    for block in blocks {
+    for (block_idx, block) in blocks.iter().enumerate() {
         if y >= area.y + area.height {
             break;
         }
@@ -142,7 +148,7 @@ fn render_blocks(
 
         match block {
             Block::BulletList { items } => {
-                for item in items {
+                for (item_i, item) in items.iter().enumerate() {
                     if bullet_count >= reveal {
                         return;
                     }
@@ -157,33 +163,95 @@ fn render_blocks(
                     if y + h > area.y + area.height {
                         return;
                     }
+                    let bullet_rect = Rect::new(remaining.x, y, remaining.width, h);
                     frame.render_widget(
                         Paragraph::new(combined).wrap(Wrap { trim: false }),
-                        Rect::new(remaining.x, y, remaining.width, h),
+                        bullet_rect,
                     );
+
+                    // Cascade entrance for each bullet item
+                    let cascade_idx = block_idx * 100 + item_i;
+                    let stagger = std::time::Duration::from_millis(100 * item_i as u64);
+                    if let Some(state) = ctx.entrances.get_or_start(
+                        ctx.slide_index,
+                        cascade_idx,
+                        EntranceKind::Cascade,
+                        std::time::Duration::from_millis(200) + stagger,
+                    ) {
+                        let raw_progress = state.progress();
+                        // Account for stagger: animation doesn't visually start until stagger elapses
+                        let stagger_frac =
+                            stagger.as_secs_f64() / (state.duration.as_secs_f64().max(0.001));
+                        let visual_progress =
+                            ((raw_progress - stagger_frac) / (1.0 - stagger_frac)).clamp(0.0, 1.0);
+                        entrance::apply_fade_in(frame, bullet_rect, visual_progress, theme);
+                    }
+
                     y += h;
                     bullet_count += 1;
                 }
             }
             _ => {
-                let h = render_block(frame, remaining, block, theme, ctx);
+                let (h, block_rect) = render_block(frame, remaining, block, theme, ctx, block_idx);
+
+                // Apply entrance effects based on block type
+                if let Some(block_rect) = block_rect {
+                    apply_entrance_for_block(frame, block, block_rect, theme, ctx, block_idx);
+                }
+
                 y += h;
             }
         }
     }
 }
 
+fn apply_entrance_for_block(
+    frame: &mut Frame,
+    block: &Block,
+    rect: Rect,
+    theme: &Theme,
+    ctx: &mut RenderCtx,
+    block_idx: usize,
+) {
+    let (kind, duration) = match block {
+        Block::Heading { level: 1, .. } => {
+            (EntranceKind::Decrypt, std::time::Duration::from_millis(600))
+        }
+        Block::Heading { .. } => (EntranceKind::SlideIn, std::time::Duration::from_millis(300)),
+        Block::Paragraph { .. } => (EntranceKind::FadeIn, std::time::Duration::from_millis(250)),
+        Block::Image { .. } => (EntranceKind::FadeIn, std::time::Duration::from_millis(300)),
+        // Code and bullets handled separately
+        _ => return,
+    };
+
+    if let Some(state) = ctx
+        .entrances
+        .get_or_start(ctx.slide_index, block_idx, kind, duration)
+    {
+        let progress = state.progress();
+        match &state.kind {
+            EntranceKind::Decrypt => entrance::apply_decrypt(frame, rect, progress, theme),
+            EntranceKind::SlideIn => entrance::apply_slide_in(frame, rect, progress, theme),
+            EntranceKind::FadeIn => entrance::apply_fade_in(frame, rect, progress, theme),
+            _ => {}
+        }
+    }
+}
+
+/// Renders a single block and returns (consumed_height, block_rect).
 fn render_block(
     frame: &mut Frame,
     area: Rect,
     block: &Block,
     theme: &Theme,
     ctx: &mut RenderCtx,
-) -> u16 {
+    block_idx: usize,
+) -> (u16, Option<Rect>) {
     match block {
         Block::Heading { level: 1, text } => {
             let big = bigtext::render(text, theme.font);
             let height = big.len() as u16;
+            let rect = Rect::new(area.x, area.y, area.width, height.min(area.height));
             for (i, line_str) in big.iter().enumerate() {
                 if area.y + i as u16 >= area.y + area.height {
                     break;
@@ -194,24 +262,20 @@ fn render_block(
                     Rect::new(area.x, area.y + i as u16, area.width, 1),
                 );
             }
-            height + 1
+            (height + 1, Some(rect))
         }
         Block::Heading { text, .. } => {
+            let rect = Rect::new(area.x, area.y, area.width, 1);
             let line = Line::from(vec![RSpan::styled(text.clone(), theme.heading_style())]);
-            frame.render_widget(
-                Paragraph::new(line),
-                Rect::new(area.x, area.y, area.width, 1),
-            );
-            2
+            frame.render_widget(Paragraph::new(line), rect);
+            (2, Some(rect))
         }
         Block::Paragraph { spans } => {
             let line = spans_to_line(spans, theme);
             let h = estimate_line_height(&line, area.width);
-            frame.render_widget(
-                Paragraph::new(line).wrap(Wrap { trim: false }),
-                Rect::new(area.x, area.y, area.width, h),
-            );
-            h + 1
+            let rect = Rect::new(area.x, area.y, area.width, h);
+            frame.render_widget(Paragraph::new(line).wrap(Wrap { trim: false }), rect);
+            (h + 1, Some(rect))
         }
         Block::BulletList { items } => {
             let mut h = 0u16;
@@ -230,7 +294,7 @@ fn render_block(
                 );
                 h += lh;
             }
-            h
+            (h, None) // bullets handle their own entrances
         }
         Block::NumberedList { items } => {
             let mut h = 0u16;
@@ -249,24 +313,80 @@ fn render_block(
                 );
                 h += lh;
             }
-            h
+            (h, None)
         }
         Block::Code { lang, code } => {
             let title = lang.as_deref().unwrap_or("");
-            let inner_height = code.lines().count() as u16;
-            let total_height = inner_height + 2;
+            let highlighted = ctx
+                .highlighter
+                .highlight(code, if title.is_empty() { "txt" } else { title });
+            let total_lines = highlighted.len();
+            let inner_height = total_lines.max(1) as u16;
+            let total_height = inner_height + 2; // borders
+
+            // Check for typewriter entrance
+            let typewriter_dur = std::time::Duration::from_millis(50 * total_lines as u64 + 200);
+            let entrance = ctx.entrances.get_or_start(
+                ctx.slide_index,
+                block_idx,
+                EntranceKind::Typewriter,
+                typewriter_dur,
+            );
+
+            let (visible_lines, char_frac) = match entrance {
+                Some(state) => entrance::typewriter_visible(state.progress(), total_lines),
+                None => (total_lines, 1.0),
+            };
+
+            // Build visible lines with optional partial last line + cursor
+            let mut lines: Vec<Line<'static>> = Vec::with_capacity(inner_height as usize);
+            for (i, hl) in highlighted.into_iter().enumerate() {
+                if i < visible_lines {
+                    lines.push(hl);
+                } else if i == visible_lines && visible_lines < total_lines {
+                    // Partially typed current line
+                    let full_text: String = hl.spans.iter().map(|s| s.content.as_ref()).collect();
+                    let chars_to_show = (char_frac * full_text.len() as f64) as usize;
+                    if chars_to_show == 0 {
+                        // Just show cursor
+                        lines.push(Line::from(RSpan::styled("▌", theme.status_accent())));
+                    } else {
+                        // Truncate spans to chars_to_show characters
+                        let mut partial_spans: Vec<RSpan<'static>> = Vec::new();
+                        let mut chars_left = chars_to_show;
+                        for span in hl.spans {
+                            let span_len = span.content.len();
+                            if chars_left >= span_len {
+                                partial_spans.push(span);
+                                chars_left -= span_len;
+                            } else {
+                                let truncated: String =
+                                    span.content.chars().take(chars_left).collect();
+                                partial_spans.push(RSpan::styled(truncated, span.style));
+                                break;
+                            }
+                        }
+                        // Append blinking cursor
+                        partial_spans.push(RSpan::styled("▌", theme.status_accent()));
+                        lines.push(Line::from(partial_spans));
+                    }
+                } else {
+                    // Not yet visible — empty line to maintain block height
+                    lines.push(Line::from(""));
+                }
+            }
+
+            let code_bg = ctx.highlighter.bg_color().unwrap_or(theme.code_bg);
             let block_widget = WidgetBlock::default()
                 .borders(Borders::ALL)
                 .border_style(theme.code_border())
                 .title(title);
-            let paragraph = Paragraph::new(code.as_str())
-                .style(theme.code_style())
+            let paragraph = Paragraph::new(lines)
+                .style(Style::default().bg(code_bg))
                 .block(block_widget);
-            frame.render_widget(
-                paragraph,
-                Rect::new(area.x, area.y, area.width, total_height.min(area.height)),
-            );
-            total_height + 1
+            let code_rect = Rect::new(area.x, area.y, area.width, total_height.min(area.height));
+            frame.render_widget(paragraph, code_rect);
+            (total_height + 1, None) // code handles its own entrance via typewriter
         }
         Block::HorizontalRule => {
             let rule = "─".repeat(area.width as usize);
@@ -274,7 +394,7 @@ fn render_block(
                 Paragraph::new(RSpan::styled(rule, theme.rule_style())),
                 Rect::new(area.x, area.y, area.width, 1),
             );
-            2
+            (2, None)
         }
         Block::Image { path, alt } => {
             // Load, resize, and cache — only resizes once per (path, size)
@@ -295,7 +415,7 @@ fn render_block(
                             Paragraph::new(line),
                             Rect::new(area.x, area.y, area.width, 1),
                         );
-                        return 2;
+                        return (2, None);
                     }
                 };
 
@@ -336,9 +456,9 @@ fn render_block(
                 });
             }
 
-            consumed_rows + 1
+            (consumed_rows + 1, Some(img_area))
         }
-        Block::Blank => 1,
+        Block::Blank => (1, None),
     }
 }
 

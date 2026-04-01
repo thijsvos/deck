@@ -16,17 +16,18 @@ impl SyncFile {
         let hash = simple_hash(input_path);
         let dir = sync_dir();
         let _ = fs::create_dir_all(&dir);
-        let path = dir.join(format!("deck-{:016x}.sync", hash));
+        let path = dir.join(format!("deck-{hash:016x}.sync"));
         Self { path }
     }
 
     /// Write current state. Uses write-then-rename for atomicity.
     pub fn write(&self, slide: usize, reveal: usize) {
-        let tmp = self
-            .path
-            .with_extension(format!("tmp.{}", std::process::id()));
+        let tmp = self.path.with_extension({
+            let pid = std::process::id();
+            format!("tmp.{pid}")
+        });
         if let Ok(mut f) = fs::File::create(&tmp) {
-            if writeln!(f, "{} {}", slide, reveal).is_ok() {
+            if writeln!(f, "{slide} {reveal}").is_ok() {
                 let _ = f.flush();
                 let _ = fs::rename(&tmp, &self.path);
             } else {
@@ -48,9 +49,10 @@ impl SyncFile {
     pub fn cleanup(&self) {
         let _ = fs::remove_file(&self.path);
         // Clean up any leftover tmp file from this process
-        let tmp = self
-            .path
-            .with_extension(format!("tmp.{}", std::process::id()));
+        let tmp = self.path.with_extension({
+            let pid = std::process::id();
+            format!("tmp.{pid}")
+        });
         let _ = fs::remove_file(&tmp);
     }
 }

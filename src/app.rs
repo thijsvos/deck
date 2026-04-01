@@ -786,7 +786,11 @@ mod tests {
 
     #[test]
     fn handle_key_goto_flow() {
-        let mut app = make_app(vec![dummy_slide(vec![]), dummy_slide(vec![]), dummy_slide(vec![])]);
+        let mut app = make_app(vec![
+            dummy_slide(vec![]),
+            dummy_slide(vec![]),
+            dummy_slide(vec![]),
+        ]);
         // Enter goto mode
         app.handle_key(key(KeyCode::Char(':')));
         assert!(app.in_goto);

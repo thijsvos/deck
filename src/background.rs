@@ -751,8 +751,16 @@ mod tests {
     #[test]
     fn from_str_all_valid_names() {
         let names = [
-            "matrix", "plasma", "lissajous", "spiral", "wave", "aurora", "rain", "noise",
-            "lattice", "orbit",
+            "matrix",
+            "plasma",
+            "lissajous",
+            "spiral",
+            "wave",
+            "aurora",
+            "rain",
+            "noise",
+            "lattice",
+            "orbit",
         ];
         for name in names {
             assert!(

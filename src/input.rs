@@ -147,10 +147,7 @@ mod tests {
     #[test]
     fn down_and_enter_map_to_next() {
         assert!(matches!(map_key(key(KeyCode::Down), false), Action::Next));
-        assert!(matches!(
-            map_key(key(KeyCode::Enter), false),
-            Action::Next
-        ));
+        assert!(matches!(map_key(key(KeyCode::Enter), false), Action::Next));
     }
 
     #[test]

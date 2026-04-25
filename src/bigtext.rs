@@ -1,11 +1,50 @@
 /// Font style for H1 big text.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum FontStyle {
     /// Heavy block characters (█), 5 rows — hacker/catppuccin
     #[default]
     Block,
     /// Large clean block characters, 7 rows — corporate/minimal
     Large,
+}
+
+/// Cache for `render` results so an unchanging H1 isn't re-rasterized every frame.
+///
+/// Keyed by an `fnv1a(text) ^ font_bits` hash so cache lookups don't allocate
+/// on the hot path. Hash collisions just trigger a recompute, which matches the
+/// policy in `Highlighter` (see `util::fnv1a`).
+pub struct BigtextCache {
+    entries: std::collections::HashMap<u64, Vec<String>>,
+}
+
+impl BigtextCache {
+    pub fn new() -> Self {
+        Self {
+            entries: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Returns the rendered rows for `(text, font)`, computing and caching on miss.
+    pub fn render(&mut self, text: &str, font: FontStyle) -> &[String] {
+        let key = cache_key(text, font);
+        self.entries
+            .entry(key)
+            .or_insert_with(|| render(text, font))
+    }
+}
+
+impl Default for BigtextCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn cache_key(text: &str, font: FontStyle) -> u64 {
+    let font_bits: u64 = match font {
+        FontStyle::Block => 0,
+        FontStyle::Large => 1,
+    };
+    crate::util::fnv1a(text) ^ font_bits.wrapping_mul(0x9E3779B97F4A7C15)
 }
 
 pub fn glyph_block(c: char) -> Option<[&'static str; 5]> {

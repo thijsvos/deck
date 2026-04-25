@@ -6,14 +6,18 @@ use ratatui::text::{Line, Span};
 use syntect::highlighting::{FontStyle, Theme as SynTheme, ThemeSet};
 use syntect::parsing::SyntaxSet;
 
+use crate::util::fnv1a;
+
 /// Syntax highlighter backed by syntect. Caches results per (code, lang) pair.
 ///
 /// Cache values are wrapped in `Arc` so cache hits are a refcount bump
-/// rather than a deep clone of every line and span.
+/// rather than a deep clone of every line and span. The cache is keyed by an
+/// `fnv1a` hash so cache lookups don't allocate a `String` per frame; on the
+/// rare hash collision the worst case is a redundant re-highlight.
 pub struct Highlighter {
     syntax_set: SyntaxSet,
     theme: SynTheme,
-    cache: HashMap<(String, String), Arc<Vec<Line<'static>>>>,
+    cache: HashMap<u64, Arc<Vec<Line<'static>>>>,
 }
 
 impl Highlighter {
@@ -42,7 +46,7 @@ impl Highlighter {
     /// Results are cached per `(code, lang)`. Returns an `Arc` so repeated
     /// calls (typewriter animation, multiple frames) are cheap refcount bumps.
     pub fn highlight(&mut self, code: &str, lang: &str) -> Arc<Vec<Line<'static>>> {
-        let key = (code.to_string(), lang.to_string());
+        let key = fnv1a(code) ^ fnv1a(lang).wrapping_mul(0x9E3779B97F4A7C15);
         if let Some(cached) = self.cache.get(&key) {
             return Arc::clone(cached);
         }

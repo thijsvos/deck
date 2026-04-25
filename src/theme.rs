@@ -33,7 +33,10 @@ pub struct Theme {
     pub code_fg: Color,
     pub bold: Color,
     pub italic: Color,
-    pub bullet: &'static str,
+    /// Pre-built `"  <bullet> "` prefix string, populated once at theme
+    /// construction so the renderer can borrow it instead of `format!`-ing
+    /// per bullet per frame.
+    pub bullet_prefix: String,
     pub font: FontStyle,
     /// Slide-to-slide transition used when the deck doesn't override it.
     pub default_transition: TransitionKind,
@@ -51,6 +54,7 @@ impl Theme {
     }
 
     fn hacker() -> Self {
+        let bullet = ">";
         Self {
             bg: Color::Rgb(10, 10, 20),
             fg: Color::Rgb(0, 255, 65),
@@ -61,7 +65,7 @@ impl Theme {
             code_fg: Color::Rgb(200, 200, 200),
             bold: Color::Rgb(255, 255, 100),
             italic: Color::Rgb(150, 150, 255),
-            bullet: ">",
+            bullet_prefix: format!("  {bullet} "),
             font: FontStyle::Block,
             default_transition: TransitionKind::Glitch,
         }
@@ -69,6 +73,7 @@ impl Theme {
 
     fn catppuccin() -> Self {
         // Catppuccin Mocha palette
+        let bullet = "◆";
         Self {
             bg: Color::Rgb(30, 30, 46),         // Base
             fg: Color::Rgb(205, 214, 244),      // Text
@@ -79,13 +84,14 @@ impl Theme {
             code_fg: Color::Rgb(166, 173, 200), // Subtext0
             bold: Color::Rgb(250, 179, 135),    // Peach
             italic: Color::Rgb(180, 190, 254),  // Lavender
-            bullet: "◆",
+            bullet_prefix: format!("  {bullet} "),
             font: FontStyle::Block,
             default_transition: TransitionKind::Dissolve,
         }
     }
 
     fn corporate() -> Self {
+        let bullet = "•";
         Self {
             bg: Color::Rgb(20, 25, 40),
             fg: Color::Rgb(215, 220, 230),
@@ -96,13 +102,14 @@ impl Theme {
             code_fg: Color::Rgb(195, 200, 210),
             bold: Color::Rgb(245, 248, 255),
             italic: Color::Rgb(150, 175, 215),
-            bullet: "•",
+            bullet_prefix: format!("  {bullet} "),
             font: FontStyle::Large,
             default_transition: TransitionKind::Wipe,
         }
     }
 
     fn minimal() -> Self {
+        let bullet = "·";
         Self {
             bg: Color::Reset,
             fg: Color::White,
@@ -113,7 +120,7 @@ impl Theme {
             code_fg: Color::White,
             bold: Color::White,
             italic: Color::Gray,
-            bullet: "·",
+            bullet_prefix: format!("  {bullet} "),
             font: FontStyle::Large,
             default_transition: TransitionKind::Fade,
         }
@@ -190,7 +197,7 @@ mod tests {
     #[test]
     fn hacker_theme_properties() {
         let t = Theme::from_name(&ThemeName::Hacker);
-        assert_eq!(t.bullet, ">");
+        assert_eq!(t.bullet_prefix, "  > ");
         assert!(matches!(t.font, FontStyle::Block));
         assert!(matches!(t.default_transition, TransitionKind::Glitch));
         assert!(matches!(t.bg, Color::Rgb(10, 10, 20)));
@@ -199,7 +206,7 @@ mod tests {
     #[test]
     fn corporate_theme_properties() {
         let t = Theme::from_name(&ThemeName::Corporate);
-        assert_eq!(t.bullet, "•");
+        assert_eq!(t.bullet_prefix, "  • ");
         assert!(matches!(t.font, FontStyle::Large));
         assert!(matches!(t.default_transition, TransitionKind::Wipe));
     }
@@ -207,7 +214,7 @@ mod tests {
     #[test]
     fn catppuccin_theme_properties() {
         let t = Theme::from_name(&ThemeName::Catppuccin);
-        assert_eq!(t.bullet, "◆");
+        assert_eq!(t.bullet_prefix, "  ◆ ");
         assert!(matches!(t.font, FontStyle::Block));
         assert!(matches!(t.default_transition, TransitionKind::Dissolve));
     }
@@ -215,7 +222,7 @@ mod tests {
     #[test]
     fn minimal_theme_properties() {
         let t = Theme::from_name(&ThemeName::Minimal);
-        assert_eq!(t.bullet, "·");
+        assert_eq!(t.bullet_prefix, "  · ");
         assert!(matches!(t.font, FontStyle::Large));
         assert!(matches!(t.default_transition, TransitionKind::Fade));
         assert!(matches!(t.bg, Color::Reset));

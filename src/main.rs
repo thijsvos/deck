@@ -14,9 +14,18 @@ mod theme;
 mod transition;
 mod util;
 
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::Path;
 use std::time::Duration;
+
+/// Maximum bytes read from the markdown deck file. 16 MB is generous for any
+/// realistic presentation and caps the worst case (huge symlink, accidental
+/// binary).
+const MAX_DECK_BYTES: u64 = 16 * 1024 * 1024;
+
+const ANIMATION_TICK: Duration = Duration::from_millis(16); // 60 FPS for transitions/entrances
+const BACKGROUND_TICK: Duration = Duration::from_millis(33); // ~30 FPS for animated backgrounds and sync polling
+const IDLE_TICK: Duration = Duration::from_millis(100); // low CPU when nothing is moving
 
 use clap::Parser;
 use crossterm::{
@@ -54,8 +63,11 @@ struct Cli {
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
 
-    let content = std::fs::read_to_string(&cli.file)
-        .map_err(|e| io::Error::new(io::ErrorKind::NotFound, format!("{}: {}", cli.file, e)))?;
+    let mut content = String::new();
+    std::fs::File::open(&cli.file)
+        .map_err(|e| io::Error::new(io::ErrorKind::NotFound, format!("{}: {}", cli.file, e)))?
+        .take(MAX_DECK_BYTES)
+        .read_to_string(&mut content)?;
 
     let deck = parse_deck(&content);
 
@@ -110,11 +122,11 @@ fn main() -> io::Result<()> {
         }
 
         let timeout = if app.transition.is_some() || app.entrances.has_active() {
-            Duration::from_millis(16) // 60fps during transitions/entrances
+            ANIMATION_TICK
         } else if app.has_active_background() || app.is_follower {
-            Duration::from_millis(33) // ~30fps for backgrounds or sync polling
+            BACKGROUND_TICK
         } else {
-            Duration::from_millis(100) // low CPU when idle
+            IDLE_TICK
         };
 
         if event::poll(timeout)? {

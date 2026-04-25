@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -6,10 +7,13 @@ use syntect::highlighting::{FontStyle, Theme as SynTheme, ThemeSet};
 use syntect::parsing::SyntaxSet;
 
 /// Syntax highlighter backed by syntect. Caches results per (code, lang) pair.
+///
+/// Cache values are wrapped in `Arc` so cache hits are a refcount bump
+/// rather than a deep clone of every line and span.
 pub struct Highlighter {
     syntax_set: SyntaxSet,
     theme: SynTheme,
-    cache: HashMap<(u64, String), Vec<Line<'static>>>,
+    cache: HashMap<(String, String), Arc<Vec<Line<'static>>>>,
 }
 
 impl Highlighter {
@@ -33,11 +37,12 @@ impl Highlighter {
     }
 
     /// Highlight source code and return one `Line` per source line.
-    /// Results are cached per (code, lang) so repeated calls are free.
-    pub fn highlight(&mut self, code: &str, lang: &str) -> Vec<Line<'static>> {
-        let key = (hash_str(code), lang.to_string());
+    /// Results are cached per `(code, lang)`. Returns an `Arc` so repeated
+    /// calls (typewriter animation, multiple frames) are cheap refcount bumps.
+    pub fn highlight(&mut self, code: &str, lang: &str) -> Arc<Vec<Line<'static>>> {
+        let key = (code.to_string(), lang.to_string());
         if let Some(cached) = self.cache.get(&key) {
-            return cached.clone();
+            return Arc::clone(cached);
         }
 
         let syntax = self
@@ -59,19 +64,16 @@ impl Highlighter {
             })
             .collect();
 
-        self.cache.insert(key.clone(), lines.clone());
-        lines
+        let arc = Arc::new(lines);
+        self.cache.insert(key, Arc::clone(&arc));
+        arc
     }
 }
 
-/// Simple FNV-1a hash for cache keys.
-fn hash_str(s: &str) -> u64 {
-    let mut h: u64 = 0xcbf29ce484222325;
-    for b in s.bytes() {
-        h ^= b as u64;
-        h = h.wrapping_mul(0x100000001b3);
+impl Default for Highlighter {
+    fn default() -> Self {
+        Self::new()
     }
-    h
 }
 
 fn to_ratatui(style: syntect::highlighting::Style) -> Style {
@@ -157,5 +159,15 @@ mod tests {
         let lines2 = h.highlight("fn foo() {}", "rs");
         assert_eq!(lines1.len(), lines2.len());
         assert_eq!(h.cache.len(), 1);
+        // Both handles point at the same Arc — refcount-bump on hit.
+        assert!(Arc::ptr_eq(&lines1, &lines2));
+    }
+
+    #[test]
+    fn highlight_distinct_code_distinct_cache_entries() {
+        let mut h = Highlighter::new();
+        let _ = h.highlight("fn a() {}", "rs");
+        let _ = h.highlight("fn b() {}", "rs");
+        assert_eq!(h.cache.len(), 2);
     }
 }

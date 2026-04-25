@@ -204,7 +204,7 @@ impl App {
             Action::Next => self.advance(),
             Action::Prev => self.go_back(),
             Action::First => self.go_to(0),
-            Action::Last => self.go_to(self.deck.slides.len() - 1),
+            Action::Last => self.go_to(self.deck.slides.len().saturating_sub(1)),
             Action::TogglePresenter => {
                 self.mode = match self.mode {
                     Mode::Normal => Mode::Presenter,
@@ -224,7 +224,9 @@ impl App {
             }
             Action::GoToConfirm => {
                 if let Ok(n) = self.goto_input.parse::<usize>() {
-                    let target = n.saturating_sub(1).min(self.deck.slides.len() - 1);
+                    let target = n
+                        .saturating_sub(1)
+                        .min(self.deck.slides.len().saturating_sub(1));
                     self.go_to(target);
                 }
                 self.in_goto = false;
@@ -279,7 +281,7 @@ impl App {
         let total_bullets = count_bullets(&self.deck.slides[self.slide_index]);
         if total_bullets > 0 && self.reveal_count < total_bullets {
             self.reveal_count += 1;
-        } else if self.slide_index < self.deck.slides.len() - 1 {
+        } else if self.slide_index + 1 < self.deck.slides.len() {
             self.slide_index += 1;
             self.reveal_count = initial_reveal(&self.deck.slides[self.slide_index]);
             self.start_transition();
@@ -305,7 +307,7 @@ impl App {
     }
 
     fn go_to(&mut self, index: usize) {
-        let new_index = index.min(self.deck.slides.len() - 1);
+        let new_index = index.min(self.deck.slides.len().saturating_sub(1));
         if new_index != self.slide_index {
             self.slide_index = new_index;
             self.reveal_count = initial_reveal(&self.deck.slides[self.slide_index]);
@@ -620,11 +622,25 @@ mod tests {
         assert_eq!(app.slide_index, 0); // didn't move
     }
 
+    /// Per-test sync key so parallel `cargo test` runs do not collide.
+    fn unique_sync_key(label: &str) -> String {
+        format!(
+            "/__deck_test_sync__{}__{}__{}",
+            label,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0),
+        )
+    }
+
     #[test]
     fn presenter_writes_sync_follower_reads() {
         use crate::sync::SyncFile;
 
-        let sync_path = "/__deck_test_sync_presenter_follower__";
+        let sync_path_owned = unique_sync_key("presenter_follower");
+        let sync_path = sync_path_owned.as_str();
 
         let mk_slides = || {
             vec![
@@ -685,7 +701,8 @@ mod tests {
     fn presenter_sync_with_bullet_reveals() {
         use crate::sync::SyncFile;
 
-        let sync_path = "/__deck_test_sync_bullet_reveal__";
+        let sync_path_owned = unique_sync_key("bullet_reveal");
+        let sync_path = sync_path_owned.as_str();
 
         let mk_slides = || {
             vec![

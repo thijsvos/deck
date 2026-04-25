@@ -176,8 +176,11 @@ fn render_blocks(
                         bullet_rect,
                     );
 
-                    // Cascade entrance: fixed 300ms animation per bullet, staggered start
-                    let cascade_idx = block_idx * 100 + item_i;
+                    // Cascade entrance: fixed 300ms animation per bullet, staggered start.
+                    // Encode (block_idx, item_i) into a single key. 10_000 leaves headroom for
+                    // bullet lists with up to 9_999 items per block — far beyond realistic decks.
+                    debug_assert!(item_i < 10_000, "bullet list exceeds cascade-idx capacity");
+                    let cascade_idx = block_idx * 10_000 + item_i;
                     let stagger = std::time::Duration::from_millis(80 * item_i as u64);
                     let anim_dur = std::time::Duration::from_millis(300);
                     if let Some(state) = ctx.entrances.get_or_start(
@@ -240,7 +243,10 @@ fn apply_entrance_for_block(
             EntranceKind::Decrypt => entrance::apply_decrypt(frame, rect, progress, theme),
             EntranceKind::SlideIn => entrance::apply_slide_in(frame, rect, progress, theme),
             EntranceKind::FadeIn => entrance::apply_fade_in(frame, rect, progress, theme),
-            _ => {}
+            // Cascade and Typewriter are dispatched by their owning render paths
+            // (bullet-list and code-block). Keep the match exhaustive so adding a
+            // new EntranceKind is a compile error rather than a silent no-op.
+            EntranceKind::Cascade | EntranceKind::Typewriter => {}
         }
     }
 }
@@ -345,11 +351,12 @@ fn render_block(
                 None => (total_lines, 1.0),
             };
 
-            // Build visible lines with optional partial last line + cursor
+            // Build visible lines with optional partial last line + cursor.
+            // `highlighted` is an Arc — iterate by reference and clone only what we use.
             let mut lines: Vec<Line<'static>> = Vec::with_capacity(inner_height as usize);
-            for (i, hl) in highlighted.into_iter().enumerate() {
+            for (i, hl) in highlighted.iter().enumerate() {
                 if i < visible_lines {
-                    lines.push(hl);
+                    lines.push(hl.clone());
                 } else if i == visible_lines && visible_lines < total_lines {
                     // Partially typed current line
                     let full_text: String = hl.spans.iter().map(|s| s.content.as_ref()).collect();
@@ -361,10 +368,10 @@ fn render_block(
                         // Truncate spans to chars_to_show characters
                         let mut partial_spans: Vec<RSpan<'static>> = Vec::new();
                         let mut chars_left = chars_to_show;
-                        for span in hl.spans {
+                        for span in &hl.spans {
                             let span_len = span.content.chars().count();
                             if chars_left >= span_len {
-                                partial_spans.push(span);
+                                partial_spans.push(span.clone());
                                 chars_left -= span_len;
                             } else {
                                 let truncated: String =

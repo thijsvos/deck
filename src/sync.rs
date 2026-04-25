@@ -2,6 +2,8 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 
+use crate::util::fnv1a;
+
 /// Tiny file-based sync between presenter and follower instances.
 /// The presenter writes `slide_index reveal_count` to a temp file.
 /// The follower polls it.
@@ -11,9 +13,15 @@ pub struct SyncFile {
 
 impl SyncFile {
     /// Derive a deterministic sync file path from the presentation file path.
-    /// Uses a user-private directory to prevent symlink attacks.
+    /// Canonicalizes first so `--present talk.md` and `--follow ./talk.md`
+    /// (or one absolute, one relative) connect to the same sync file.
+    /// Falls back to the raw path if the file doesn't exist yet.
     pub fn for_file(input_path: &str) -> Self {
-        let hash = simple_hash(input_path);
+        let canonical = fs::canonicalize(input_path)
+            .ok()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|| input_path.to_string());
+        let hash = fnv1a(&canonical);
         let dir = sync_dir();
         let _ = fs::create_dir_all(&dir);
         let path = dir.join(format!("deck-{hash:016x}.sync"));
@@ -71,22 +79,28 @@ fn sync_dir() -> PathBuf {
     std::env::temp_dir().join("deck")
 }
 
-fn simple_hash(s: &str) -> u64 {
-    let mut h: u64 = 0xcbf29ce484222325; // FNV offset basis
-    for b in s.bytes() {
-        h ^= b as u64;
-        h = h.wrapping_mul(0x100000001b3); // FNV prime
-    }
-    h
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// Per-test unique key so parallel `cargo test` runs do not collide.
+    fn unique_key(label: &str) -> String {
+        format!(
+            "/__deck_test__{}__{}__{}__{}",
+            label,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0),
+            line!(),
+        )
+    }
+
     #[test]
     fn write_read_roundtrip() {
-        let sync = SyncFile::for_file("/tmp/test-deck-roundtrip.md");
+        let key = unique_key("roundtrip");
+        let sync = SyncFile::for_file(&key);
         sync.write(5, 3);
         let result = sync.read();
         assert_eq!(result, Some((5, 3)));
@@ -95,7 +109,8 @@ mod tests {
 
     #[test]
     fn read_missing_file_returns_none() {
-        let sync = SyncFile::for_file("/tmp/nonexistent-deck-test.md");
+        let key = unique_key("missing");
+        let sync = SyncFile::for_file(&key);
         sync.cleanup(); // ensure clean state
         assert_eq!(sync.read(), None);
     }
@@ -116,7 +131,8 @@ mod tests {
 
     #[test]
     fn cleanup_removes_files() {
-        let sync = SyncFile::for_file("/tmp/test-deck-cleanup.md");
+        let key = unique_key("cleanup");
+        let sync = SyncFile::for_file(&key);
         sync.write(0, 0);
         assert!(sync.path.exists());
         sync.cleanup();
@@ -128,5 +144,18 @@ mod tests {
         let dir = sync_dir();
         // Should be inside a "deck" subdirectory, not directly in /tmp
         assert!(dir.ends_with("deck"));
+    }
+
+    #[test]
+    fn relative_and_absolute_resolve_to_same_path_when_canonicalizable() {
+        // Use a file that actually exists (Cargo.toml at the project root)
+        // so canonicalize() succeeds and equates the two forms.
+        let cwd = std::env::current_dir().expect("cwd");
+        let abs = cwd.join("Cargo.toml");
+        if abs.exists() {
+            let a = SyncFile::for_file("Cargo.toml");
+            let b = SyncFile::for_file(abs.to_str().unwrap());
+            assert_eq!(a.path, b.path, "canonicalize should equate paths");
+        }
     }
 }

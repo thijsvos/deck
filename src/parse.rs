@@ -87,10 +87,17 @@ pub fn parse_deck(input: &str) -> Deck {
 }
 
 fn extract_frontmatter(input: &str) -> (DeckMeta, String) {
-    let trimmed = input.trim_start();
+    // Normalize CRLF so Windows-authored markdown (or files checked out with
+    // `core.autocrlf=true`) parses identically to LF.
+    let normalized = if input.contains("\r\n") {
+        input.replace("\r\n", "\n")
+    } else {
+        input.to_string()
+    };
+    let trimmed = normalized.trim_start();
     let after_first = match trimmed.strip_prefix("---") {
         Some(rest) => rest,
-        None => return (DeckMeta::default(), input.to_string()),
+        None => return (DeckMeta::default(), normalized.clone()),
     };
     let after_first = after_first.trim_start_matches(['\n', '\r']);
 
@@ -103,7 +110,7 @@ fn extract_frontmatter(input: &str) -> (DeckMeta, String) {
         }
     }
 
-    (DeckMeta::default(), input.to_string())
+    (DeckMeta::default(), normalized)
 }
 
 fn split_slides(body: &str) -> Vec<String> {
@@ -372,5 +379,15 @@ mod tests {
         let input = "<!-- background: fire -->\n# Title";
         let deck = parse_deck(input);
         assert!(deck.slides[0].background.is_none());
+    }
+
+    #[test]
+    fn frontmatter_with_crlf_line_endings() {
+        // Simulates a file authored on Windows or checked out with autocrlf.
+        let input = "---\r\ntitle = \"Hello\"\r\ntheme = \"minimal\"\r\n---\r\n# Slide 1";
+        let deck = parse_deck(input);
+        assert_eq!(deck.meta.title, "Hello");
+        assert!(matches!(deck.meta.theme, ThemeName::Minimal));
+        assert_eq!(deck.slides.len(), 1);
     }
 }

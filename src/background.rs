@@ -683,23 +683,21 @@ mod tests {
     fn value_noise_in_range() {
         for i in 0..100 {
             let v = value_noise(i as f64 * 0.1, i as f64 * 0.2);
-            assert!(v >= 0.0 && v <= 1.0, "noise({}) = {}", i, v);
+            assert!((0.0..=1.0).contains(&v), "noise({i}) = {v}");
         }
     }
 
     fn check_cell_fn(f: fn(u16, u16, u16, u16, f64) -> (char, f64), name: &str) {
         let (c1, b1) = f(10, 5, 80, 24, 1.0);
         let (c2, b2) = f(10, 5, 80, 24, 1.0);
-        assert_eq!(c1, c2, "{} not deterministic (char)", name);
-        assert_eq!(b1, b2, "{} not deterministic (brightness)", name);
+        assert_eq!(c1, c2, "{name} not deterministic (char)");
+        assert_eq!(b1, b2, "{name} not deterministic (brightness)");
         for x in (0..80).step_by(10) {
             for y in (0..24).step_by(6) {
                 let (_, b) = f(x, y, 80, 24, 0.5);
                 assert!(
-                    b >= 0.0 && b <= 1.0,
-                    "{} brightness {} out of range",
-                    name,
-                    b
+                    (0.0..=1.0).contains(&b),
+                    "{name} brightness {b} out of range",
                 );
             }
         }

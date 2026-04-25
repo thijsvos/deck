@@ -436,11 +436,14 @@ fn render_with<const N: usize>(
     glyph_fn: fn(char) -> Option<[&'static str; N]>,
     rows: usize,
 ) -> Vec<String> {
-    let glyphs: Vec<[&str; N]> = text.chars().filter_map(glyph_fn).collect();
-
-    if glyphs.is_empty() {
-        return vec![text.to_uppercase()];
-    }
+    // Collect with `map` (not `filter_map`) so a single missing glyph forces
+    // the whole title into the plain-text fallback. Otherwise we'd silently
+    // drop unsupported chars (e.g. "café" → "cafe", missing the é).
+    let glyphs: Option<Vec<[&str; N]>> = text.chars().map(glyph_fn).collect();
+    let glyphs = match glyphs {
+        Some(g) if !g.is_empty() => g,
+        _ => return vec![text.to_uppercase()],
+    };
 
     (0..rows)
         .map(|row| glyphs.iter().map(|g| g[row]).collect::<Vec<_>>().join(" "))
@@ -508,5 +511,13 @@ mod tests {
         assert!(glyph_block('~').is_none());
         assert!(glyph_block('(').is_none());
         assert!(glyph_large('~').is_none());
+    }
+
+    #[test]
+    fn partial_unsupported_falls_back_to_plain() {
+        // Previously: `café` rendered as `CAFE` with the é silently dropped.
+        // Now: any unmapped char trips the plain-text fallback.
+        let lines = render("café", FontStyle::Block);
+        assert_eq!(lines, vec!["CAFÉ"]);
     }
 }

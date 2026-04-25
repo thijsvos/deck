@@ -247,8 +247,7 @@ mod tests {
             (0, 0, 0),
             EntranceState::new(EntranceKind::FadeIn, Duration::ZERO),
         );
-        let state =
-            tracker.get_or_start(0, 0, 0, EntranceKind::FadeIn, Duration::from_millis(200));
+        let state = tracker.get_or_start(0, 0, 0, EntranceKind::FadeIn, Duration::from_millis(200));
         assert!(state.is_none()); // already finished
     }
 

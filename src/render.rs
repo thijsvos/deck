@@ -385,7 +385,9 @@ fn render_block(
         Block::Paragraph { spans } => render_paragraph(frame, area, spans, theme),
         Block::BulletList { items } => render_bullet_list_static(frame, area, items, theme),
         Block::NumberedList { items } => render_numbered_list(frame, area, items, theme),
-        Block::Code { lang, code } => render_code(frame, area, lang.as_deref(), code, theme, ctx, block_idx),
+        Block::Code { lang, code } => {
+            render_code(frame, area, lang.as_deref(), code, theme, ctx, block_idx)
+        }
         Block::HorizontalRule => render_horizontal_rule(frame, area, theme),
         Block::Image { path, alt } => render_image(frame, area, path, alt, theme, ctx),
     }
@@ -442,13 +444,7 @@ fn render_bullet_list_static<'a>(
 ) -> BlockRender {
     let mut h = 0u16;
     for item in items {
-        let lh = render_bullet_item(
-            frame,
-            area,
-            area.y.saturating_add(h),
-            &item.spans,
-            theme,
-        );
+        let lh = render_bullet_item(frame, area, area.y.saturating_add(h), &item.spans, theme);
         h = h.saturating_add(lh);
     }
     BlockRender::self_entrance(h) // bullets handle their own entrances
@@ -523,7 +519,11 @@ fn render_code(
                     let total_chars: usize =
                         hl.spans.iter().map(|s| s.content.chars().count()).sum();
                     let chars_to_show = (char_frac * total_chars as f64) as usize;
-                    out.push(typewriter_partial_line(&hl.spans, chars_to_show, cursor_style));
+                    out.push(typewriter_partial_line(
+                        &hl.spans,
+                        chars_to_show,
+                        cursor_style,
+                    ));
                 } else {
                     out.push(Line::from(""));
                 }

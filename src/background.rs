@@ -82,12 +82,7 @@ fn apply_percell(frame: &mut Frame, area: Rect, kind: &BackgroundKind, time: f64
 /// Mutates `cell` to draw a background glyph at the given brightness. Skipping
 /// the empty-cell check is intentional — callers gate on `cell.symbol()` so
 /// they only call this for cells that should be painted.
-fn write_bg_cell(
-    cell: &mut ratatui::buffer::Cell,
-    ch: char,
-    brightness: f64,
-    theme: &Theme,
-) {
+fn write_bg_cell(cell: &mut ratatui::buffer::Cell, ch: char, brightness: f64, theme: &Theme) {
     if brightness < 0.02 {
         cell.set_char(' ');
         cell.set_style(Style::default().bg(theme.bg));

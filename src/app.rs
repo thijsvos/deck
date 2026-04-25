@@ -393,7 +393,6 @@ impl App {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

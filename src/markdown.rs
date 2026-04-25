@@ -1,5 +1,9 @@
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Parser, Tag, TagEnd};
 
+/// One block of slide content.
+///
+/// The intermediate representation produced by [`parse_blocks`] and consumed
+/// by the render layer.
 #[derive(Debug, Clone)]
 pub enum Block {
     Heading { level: u8, text: String },
@@ -11,11 +15,14 @@ pub enum Block {
     Image { path: String, alt: String },
 }
 
+/// One item in a bullet or numbered list, holding inline spans.
 #[derive(Debug, Clone)]
 pub struct ListItem {
     pub spans: Vec<Span>,
 }
 
+/// Inline text fragment with style. Used inside paragraphs, headings, and list
+/// items to mix plain text with bold, italic, and inline-code runs.
 #[derive(Debug, Clone)]
 pub enum Span {
     Plain(String),
@@ -24,6 +31,10 @@ pub enum Span {
     Code(String),
 }
 
+/// Parse a markdown fragment into a flat list of blocks.
+///
+/// Wraps `pulldown-cmark`'s event stream into the deck IR the renderer
+/// expects. Nested lists are flattened: only the innermost items are kept.
 pub fn parse_blocks(markdown: &str) -> Vec<Block> {
     let parser = Parser::new(markdown);
     let mut blocks = Vec::new();

@@ -22,8 +22,10 @@ pub enum ImageProtocol {
 /// bombs in attacker-controlled image files.
 const MAX_IMAGE_DIM: u32 = 8192;
 
-/// FIFO-evicted cache. Insertion order is tracked so we never thrash the whole
-/// cache on overflow — only the oldest entry is dropped.
+/// FIFO-evicted cache. Insertion order is tracked so we never thrash the
+/// whole cache on overflow. On `insert`, oldest entries are popped one at a
+/// time until `len < capacity`; in steady state with a fixed capacity this
+/// drops exactly one entry per insert.
 struct FifoCache<K, V> {
     map: HashMap<K, V>,
     order: VecDeque<K>,
@@ -65,20 +67,29 @@ impl<K: std::hash::Hash + Eq + Clone, V> FifoCache<K, V> {
     }
 }
 
-/// Cache key keyed by raw `src` string (skips per-frame canonicalize).
+/// Cache key keyed by the raw `src` string. Avoids canonicalizing the path
+/// on every frame's lookup; canonicalize only runs on cache miss to validate
+/// the path.
 type ResizedKey = (String, u16, u16);
 
-/// Cached images keyed by `(src, target_cols, target_rows)`.
-/// Stores already-resized images so resize/decode happens once per size.
+/// Multi-tier image cache.
+///
+/// - `originals`: decoded RGBA images keyed by raw `src`
+/// - `resized`: resized images keyed by `(src, cols, rows)`
+/// - `encoded`: pre-encoded Kitty base64 PNG keyed by `(src, cols, rows)`
+/// - `validated`: set of `src` strings that have already passed the
+///   path-traversal check
+///
+/// Each tier is FIFO-evicted independently. Decode + resize + encode each
+/// happen at most once per unique key.
 pub struct ImageCache {
-    /// Original decoded images keyed by raw src string.
     originals: FifoCache<String, Arc<RgbaImage>>,
-    /// Resized images keyed by (src, cols, rows).
     resized: FifoCache<ResizedKey, Arc<RgbaImage>>,
-    /// Pre-encoded Kitty base64 PNG keyed by (src, cols, rows).
     encoded: FifoCache<ResizedKey, String>,
     /// `src` strings that have already passed the path-traversal check.
-    /// Avoids re-running canonicalize on every cache hit.
+    /// Avoids re-running the `base_dir.canonicalize()` + `starts_with` check
+    /// on every cache hit. The `src` itself is still re-canonicalized via
+    /// `resolve()` on hit to recover the resolved path.
     validated: HashMap<String, ()>,
 }
 
@@ -87,6 +98,8 @@ const DEFAULT_MAX_ORIGINALS: usize = 16;
 const DEFAULT_MAX_ENCODED: usize = 64;
 
 impl ImageCache {
+    /// Construct an empty cache with the default capacities (16 originals,
+    /// 64 resized, 64 encoded).
     pub fn new() -> Self {
         Self {
             originals: FifoCache::new(DEFAULT_MAX_ORIGINALS),
@@ -97,12 +110,16 @@ impl ImageCache {
     }
 
     /// Resolve and validate `src`. Absolute paths are trusted (the user
-    /// explicitly typed them); relative paths are sandboxed to `base_dir`.
-    /// Returns the canonicalized path on success.
+    /// explicitly typed them) and bypass the sandbox check; relative paths
+    /// are sandboxed to `base_dir`. Returns the canonicalized path on success.
+    ///
+    /// The first call for a given `src` runs the full sandbox check; later
+    /// calls for the same `src` short-circuit via the `validated` set and
+    /// re-resolve the path only. The `validated` set is never invalidated,
+    /// so renaming or moving `base_dir` after first validation is not
+    /// detected.
     fn resolve_and_validate(&mut self, src: &str, base_dir: &Path) -> Option<PathBuf> {
         if self.validated.contains_key(src) {
-            // Already validated this exact src in a prior call.
-            // We still need the resolved path; recompute (cheap if cached at OS level).
             return resolve(src, base_dir);
         }
         let resolved = resolve(src, base_dir)?;
@@ -118,7 +135,10 @@ impl ImageCache {
     }
 
     /// Load, resize, and cache an image for the given area dimensions.
-    /// Returns None if the file can't be read/decoded or path escapes base_dir.
+    /// Returns `None` if the file can't be read or decoded.
+    ///
+    /// Relative `src` paths are sandboxed to `base_dir`; absolute paths are
+    /// trusted (user-typed) and bypass the sandbox check.
     pub fn get_resized(
         &mut self,
         src: &str,
@@ -147,7 +167,10 @@ impl ImageCache {
     }
 
     /// Get pre-encoded Kitty base64 PNG for a cached resized image.
-    /// Computes and caches on first call for each (src, cols, rows).
+    /// Computes and caches on first call for each `(src, cols, rows)`.
+    /// Returns `None` if no resized image has been cached for this key
+    /// (caller must invoke `get_resized` first), or if PNG encoding fails.
+    /// `_base_dir` is unused — kept for symmetry with `get_resized`.
     pub fn get_encoded_kitty(
         &mut self,
         src: &str,
@@ -330,7 +353,9 @@ pub fn flush_deferred<W: Write>(w: &mut W, images: &[DeferredImage]) -> std::io:
     Ok(())
 }
 
-/// Kitty Graphics Protocol: send pre-encoded base64 PNG in APC escape.
+/// Kitty Graphics Protocol: send pre-encoded base64 PNG in an APC escape.
+/// No-op (returns Ok) if `d.kitty_b64` is `None` — caller is expected to
+/// have populated it via [`ImageCache::get_encoded_kitty`].
 fn render_kitty<W: Write>(w: &mut W, d: &DeferredImage) -> std::io::Result<()> {
     let b64 = match d.kitty_b64 {
         Some(ref s) => s,

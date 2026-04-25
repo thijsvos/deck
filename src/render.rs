@@ -18,7 +18,10 @@ use crate::markdown::{Block, Span};
 use crate::parse::{Layout, Slide};
 use crate::theme::Theme;
 
-/// Shared rendering context to avoid passing many parameters individually.
+/// Shared per-frame rendering context bundling all state the slide renderer
+/// reads or mutates: image protocol + cache, deferred-render queue, sandbox
+/// base dir, syntax highlighter, entrance-animation tracker, and the index of
+/// the slide currently being drawn (used as the entrance-tracker key).
 pub struct RenderCtx<'a> {
     pub protocol: ImageProtocol,
     pub image_cache: &'a mut ImageCache,
@@ -29,6 +32,11 @@ pub struct RenderCtx<'a> {
     pub slide_index: usize,
 }
 
+/// Draw one slide into `area`.
+///
+/// Dispatches on `slide.layout` (default, vertically centered, or two-column).
+/// `reveal` is the number of bullets to show; pass `usize::MAX` for previews
+/// or for slides without bullets.
 pub fn render_slide(
     frame: &mut Frame,
     area: Rect,
@@ -90,6 +98,11 @@ pub fn render_slide(
     }
 }
 
+/// Draw the bottom status bar.
+///
+/// Layout: deck title (and optional author) on the left, slide counter
+/// centered, elapsed `mm:ss` timer on the right. Padding between segments is
+/// filled with `─` glyphs.
 #[allow(clippy::too_many_arguments)]
 pub fn render_status_bar(
     frame: &mut Frame,

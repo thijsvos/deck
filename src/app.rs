@@ -21,34 +21,76 @@ use crate::sync::SyncFile;
 use crate::theme::Theme;
 use crate::transition::{self, TransitionKind, TransitionState};
 
+/// Which UI layout the renderer uses.
+///
+/// Toggled with `p`. `Normal` shows full-screen slides; `Presenter` shows the
+/// current and next slide side-by-side with speaker notes and a timer.
 pub enum Mode {
     Normal,
     Presenter,
 }
 
+/// Top-level application state.
+///
+/// Owns the parsed deck, the navigation cursor (`slide_index` and
+/// `reveal_count`), the active theme, optional presenter/follower [`SyncFile`],
+/// image cache, transition + entrance animation state, and the syntect
+/// highlighter. Constructed once in `main` and driven by [`App::draw`],
+/// [`App::tick`], and [`App::handle_key`].
 pub struct App {
+    /// Parsed deck (frontmatter metadata + ordered slides).
     pub deck: Deck,
+    /// Index into `deck.slides` of the slide currently being shown.
     pub slide_index: usize,
+    /// Number of bullets revealed on the current slide. `usize::MAX` for slides
+    /// that contain no bullets — saturates so `advance` immediately moves to
+    /// the next slide.
     pub reveal_count: usize,
+    /// Active UI layout (full-screen vs. presenter view).
     pub mode: Mode,
+    /// True while the help overlay is visible.
     pub show_help: bool,
+    /// In-progress digit input for the `:N Enter` go-to command.
     pub goto_input: String,
+    /// True while the go-to overlay is accepting input.
     pub in_goto: bool,
+    /// Active slide-to-slide transition, if any.
     pub transition: Option<TransitionState>,
+    /// Process start time. Currently used for animated background phase.
     pub start: Instant,
+    /// Speaker timer; reset by the `r` key and rendered into the status bar.
     pub timer: Instant,
+    /// Color/font palette in use.
     pub theme: Theme,
+    /// Optional sync channel. When set, the presenter writes navigation state
+    /// here and a follower process reads it to mirror the slide.
     pub sync: Option<SyncFile>,
+    /// Read-only follower mode: navigation keys are ignored and `tick`
+    /// polls `sync` instead.
     pub is_follower: bool,
+    /// Best image protocol detected at startup.
     pub protocol: ImageProtocol,
+    /// Decoded/resized/encoded image cache, shared across frames.
     pub image_cache: ImageCache,
+    /// Per-frame queue of high-resolution images to flush to the terminal
+    /// after ratatui has finished writing the cell buffer. Cleared at the
+    /// start of every `draw`.
     pub deferred_images: Vec<DeferredImage>,
+    /// Sandbox root for relative image paths. Typically the directory
+    /// containing the markdown file.
     pub base_dir: PathBuf,
+    /// Cached syntect highlighter for fenced code blocks.
     pub highlighter: Highlighter,
+    /// Per-block entrance animation tracker. Reset on slide change.
     pub entrances: EntranceTracker,
 }
 
 impl App {
+    /// Build a fresh app rooted on the first slide.
+    ///
+    /// Panics if `deck.slides` is empty. `is_follower = true` makes this
+    /// instance read-only — it polls `sync` and ignores navigation keys.
+    /// `base_dir` is the sandbox root for relative image paths.
     pub fn new(
         deck: Deck,
         theme: Theme,
@@ -83,12 +125,15 @@ impl App {
         }
     }
 
+    /// True when the current slide has an animated background. The main loop
+    /// uses this to bump the redraw rate to ~30fps.
     pub fn has_active_background(&self) -> bool {
         self.deck.slides[self.slide_index].background.is_some()
     }
 
+    /// Remove the sync file on shutdown. No-op for followers; only the
+    /// presenter owns the file and is responsible for cleanup.
     pub fn cleanup_sync(&self) {
-        // Only the presenter cleans up the sync file
         if let Some(ref sync) = self.sync {
             if !self.is_follower {
                 sync.cleanup();
@@ -96,6 +141,11 @@ impl App {
         }
     }
 
+    /// Render one frame: slide content (or presenter pane), animated
+    /// background, transition overlay, status bar, and any active modal
+    /// (help / goto). Clears `deferred_images`; high-resolution image
+    /// protocols (Kitty/Sixel) are flushed by the caller after `draw`
+    /// returns.
     pub fn draw(&mut self, frame: &mut Frame) {
         self.deferred_images.clear();
         self.entrances.on_slide_change(self.slide_index);
@@ -180,7 +230,13 @@ impl App {
         }
     }
 
-    /// Returns true if the app should quit.
+    /// Process a key event and mutate slide/reveal/UI state. When navigation
+    /// occurs the new position is also written to the sync file (presenter
+    /// only). In follower mode every key except quit is ignored.
+    ///
+    /// Returns true only when the app should fully exit. `Quit` first
+    /// dismisses the help overlay or goto buffer if either is active, and
+    /// only quits on the next press.
     pub fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
         // Follower mode: only allow quit
         if self.is_follower {
@@ -245,6 +301,10 @@ impl App {
         false
     }
 
+    /// Per-frame housekeeping: clear finished transitions and, in follower
+    /// mode, read the sync file to mirror the presenter's slide and reveal
+    /// index. Transitions are started for slide changes only, not reveal-only
+    /// updates.
     pub fn tick(&mut self) {
         if let Some(ref trans) = self.transition {
             if trans.is_done() {

@@ -1,5 +1,10 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
+/// Logical action a key event maps to.
+///
+/// Decouples crossterm key codes from `App`'s state machine. `GoTo*` variants
+/// are only emitted while the app is in goto-input mode (see `map_key`'s
+/// `in_goto` flag).
 pub enum Action {
     Next,
     Prev,
@@ -17,6 +22,10 @@ pub enum Action {
     None,
 }
 
+/// Map a crossterm key event to an [`Action`].
+///
+/// `in_goto` switches to the slide-number input keymap, where digits and
+/// `Backspace` edit the buffer and `Enter` / `Esc` confirm or cancel.
 pub fn map_key(key: KeyEvent, in_goto: bool) -> Action {
     if in_goto {
         return match key.code {

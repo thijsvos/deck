@@ -4,6 +4,10 @@ use serde::Deserialize;
 use crate::bigtext::FontStyle;
 use crate::transition::TransitionKind;
 
+/// Built-in theme variants.
+///
+/// Selectable via the `--theme` CLI flag or the `theme = "..."` frontmatter
+/// field. Mapped to a concrete [`Theme`] palette by [`Theme::from_name`].
 #[derive(Clone, Debug, Default, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeName {
@@ -14,6 +18,11 @@ pub enum ThemeName {
     Catppuccin,
 }
 
+/// Color palette and font/transition defaults used by the renderer.
+///
+/// Build from a [`ThemeName`] via [`Theme::from_name`]. Prefer the `*_style`
+/// accessors over reading the raw color fields directly; they bake in
+/// modifiers (`BOLD`, `ITALIC`) and the chosen background.
 pub struct Theme {
     pub bg: Color,
     pub fg: Color,
@@ -26,10 +35,12 @@ pub struct Theme {
     pub italic: Color,
     pub bullet: &'static str,
     pub font: FontStyle,
+    /// Slide-to-slide transition used when the deck doesn't override it.
     pub default_transition: TransitionKind,
 }
 
 impl Theme {
+    /// Build one of the built-in themes by name.
     pub fn from_name(name: &ThemeName) -> Self {
         match name {
             ThemeName::Hacker => Self::hacker(),
@@ -108,32 +119,39 @@ impl Theme {
         }
     }
 
+    /// Style for the H1 big-text glyphs. Currently aliases `heading_style`.
     pub fn h1_style(&self) -> Style {
         self.heading_style()
     }
 
+    /// Style for headings (H2+): `heading` color, bold.
     pub fn heading_style(&self) -> Style {
         Style::default()
             .fg(self.heading)
             .add_modifier(Modifier::BOLD)
     }
 
+    /// Style for normal body text: `fg` on `bg`.
     pub fn body_style(&self) -> Style {
         Style::default().fg(self.fg).bg(self.bg)
     }
 
+    /// Style for inline and fenced code: `code_fg` on `code_bg`.
     pub fn code_style(&self) -> Style {
         Style::default().fg(self.code_fg).bg(self.code_bg)
     }
 
+    /// Style for the border around fenced code blocks.
     pub fn code_border(&self) -> Style {
         Style::default().fg(self.dim)
     }
 
+    /// Style for the leading bullet glyph.
     pub fn bullet_style(&self) -> Style {
         Style::default().fg(self.accent)
     }
 
+    /// Style for `**bold**` runs: `bold` color with the `BOLD` modifier.
     pub fn bold_style(&self) -> Style {
         Style::default()
             .fg(self.bold)
@@ -141,6 +159,7 @@ impl Theme {
             .add_modifier(Modifier::BOLD)
     }
 
+    /// Style for `*italic*` runs: `italic` color with the `ITALIC` modifier.
     pub fn italic_style(&self) -> Style {
         Style::default()
             .fg(self.italic)
@@ -148,14 +167,17 @@ impl Theme {
             .add_modifier(Modifier::ITALIC)
     }
 
+    /// Style for horizontal rules: `dim` foreground.
     pub fn rule_style(&self) -> Style {
         Style::default().fg(self.dim)
     }
 
+    /// Status bar base style: `dim` on `bg`.
     pub fn status_style(&self) -> Style {
         Style::default().fg(self.dim).bg(self.bg)
     }
 
+    /// Accent style used inside the status bar (title and timer): `accent` on `bg`.
     pub fn status_accent(&self) -> Style {
         Style::default().fg(self.accent).bg(self.bg)
     }

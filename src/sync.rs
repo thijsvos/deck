@@ -15,7 +15,8 @@ impl SyncFile {
     /// Derive a deterministic sync file path from the presentation file path.
     /// Canonicalizes first so `--present talk.md` and `--follow ./talk.md`
     /// (or one absolute, one relative) connect to the same sync file.
-    /// Falls back to the raw path if the file doesn't exist yet.
+    /// Falls back to the raw path string if canonicalize fails for any reason
+    /// (file not yet created, permission error, etc.).
     pub fn for_file(input_path: &str) -> Self {
         let canonical = fs::canonicalize(input_path)
             .ok()
@@ -29,6 +30,9 @@ impl SyncFile {
     }
 
     /// Write current state. Uses write-then-rename for atomicity.
+    /// All I/O errors are silently ignored — the sync channel is best-effort
+    /// and a failed write recovers on the next call. The temp file
+    /// (`<path>.tmp.<pid>`) is best-effort cleaned up on write failure.
     pub fn write(&self, slide: usize, reveal: usize) {
         let tmp = self.path.with_extension({
             let pid = std::process::id();
@@ -44,7 +48,9 @@ impl SyncFile {
         }
     }
 
-    /// Read current state from the sync file.
+    /// Read current state from the sync file. Returns `None` if the file is
+    /// missing, unreadable, malformed (fewer than two whitespace-separated
+    /// tokens), or contains values that don't parse as `usize`.
     pub fn read(&self) -> Option<(usize, usize)> {
         let content = fs::read_to_string(&self.path).ok()?;
         let mut parts = content.split_whitespace();

@@ -63,6 +63,8 @@ impl Default for EntranceTracker {
 }
 
 impl EntranceTracker {
+    /// Construct an empty tracker with no active slide. The first call to
+    /// `on_slide_change` will not purge anything (there's nothing to purge).
     pub fn new() -> Self {
         Self {
             states: HashMap::new(),
@@ -70,7 +72,11 @@ impl EntranceTracker {
         }
     }
 
-    /// Called when a slide changes — purges old animations.
+    /// Notify the tracker of the active slide.
+    ///
+    /// If `slide` differs from the previously tracked slide, all in-flight
+    /// animations are purged. Safe to call every frame: a no-op when the
+    /// slide hasn't changed.
     pub fn on_slide_change(&mut self, slide: usize) {
         if slide != self.current_slide {
             self.states.clear();
@@ -79,7 +85,12 @@ impl EntranceTracker {
     }
 
     /// Get entrance state for a block, creating a new animation if first seen.
-    /// Returns None if the animation is already finished (no need to apply effects).
+    /// Returns `None` if the animation is already finished (no need to apply
+    /// effects).
+    ///
+    /// `kind` and `duration` are only used when creating a new state; on
+    /// subsequent calls for the same `(slide, block_idx)` they are ignored
+    /// and the existing state is returned.
     pub fn get_or_start(
         &mut self,
         slide: usize,

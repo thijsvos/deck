@@ -17,6 +17,8 @@ pub struct Highlighter {
 }
 
 impl Highlighter {
+    /// Construct a highlighter with the bundled syntax set and the
+    /// `base16-ocean.dark` color theme.
     pub fn new() -> Self {
         let syntax_set = SyntaxSet::load_defaults_newlines();
         let theme_set = ThemeSet::load_defaults();

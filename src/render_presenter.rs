@@ -11,6 +11,9 @@ use crate::parse::Deck;
 use crate::render::{self, RenderCtx};
 use crate::theme::Theme;
 
+/// Render the presenter view: a 70/30 vertical split with the current and
+/// next slide on top (65/35 horizontal split), and speaker notes plus the
+/// elapsed timer on the bottom.
 #[allow(clippy::too_many_arguments)]
 pub fn render_presenter(
     frame: &mut Frame,

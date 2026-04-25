@@ -5,17 +5,28 @@ use serde::Deserialize;
 
 use crate::theme::Theme;
 
+/// Visual effect played when the slide changes.
+///
+/// `None` skips the overlay entirely. Each theme picks a default in
+/// `Theme::default_transition`; per-deck override comes from the
+/// `transition = "..."` frontmatter field.
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TransitionKind {
     #[default]
     None,
+    /// Random characters gradually resolve into the slide content.
     Glitch,
+    /// Shade blocks fade out to reveal slide content.
     Fade,
+    /// Vertical bar sweeps left-to-right, revealing the new slide.
     Wipe,
+    /// Cell-by-cell dissolve with smoothstep easing.
     Dissolve,
 }
 
+/// Live state of an active transition: kind, when it started, and how long it
+/// should run (default 400ms).
 pub struct TransitionState {
     pub kind: TransitionKind,
     pub started: Instant,
@@ -23,6 +34,7 @@ pub struct TransitionState {
 }
 
 impl TransitionState {
+    /// Start a 400ms transition of the given kind, anchored to `Instant::now()`.
     pub fn new(kind: TransitionKind) -> Self {
         Self {
             kind,
@@ -31,6 +43,7 @@ impl TransitionState {
         }
     }
 
+    /// True once `started + duration` has elapsed.
     pub fn is_done(&self) -> bool {
         self.started.elapsed() >= self.duration
     }

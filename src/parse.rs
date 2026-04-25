@@ -5,12 +5,17 @@ use crate::markdown::{self, Block};
 use crate::theme::ThemeName;
 use crate::transition::TransitionKind;
 
+/// A fully parsed presentation: TOML frontmatter (`meta`) plus ordered slides.
+///
+/// Produced by [`parse_deck`].
 #[derive(Debug)]
 pub struct Deck {
     pub meta: DeckMeta,
     pub slides: Vec<Slide>,
 }
 
+/// Deck-wide metadata read from a TOML frontmatter block at the top of the
+/// markdown file. All fields are optional and default when absent.
 #[derive(Debug, Deserialize)]
 pub struct DeckMeta {
     #[serde(default = "default_title")]
@@ -21,6 +26,8 @@ pub struct DeckMeta {
     pub theme: ThemeName,
     #[serde(default)]
     pub transition: TransitionKind,
+    /// Default animated background for the first slide. Per-slide overrides
+    /// (via `<!-- background: ... -->`) take precedence.
     #[serde(default)]
     pub background: Option<BackgroundKind>,
 }
@@ -41,21 +48,31 @@ impl Default for DeckMeta {
     }
 }
 
+/// One slide: ordered blocks plus optional layout/columns/notes/background.
 #[derive(Debug)]
 pub struct Slide {
     pub blocks: Vec<Block>,
     pub layout: Layout,
+    /// Side-by-side body when `layout == Columns`. Any leading blocks above
+    /// the `::: columns` marker live in `blocks` and render above the split.
     pub columns: Option<Columns>,
+    /// Speaker notes extracted from `<!-- note: ... -->` comments. Hidden in
+    /// normal mode; shown in presenter mode.
     pub notes: Vec<String>,
+    /// Per-slide animated background that overrides the deck-level default.
     pub background: Option<BackgroundKind>,
 }
 
+/// Two-column slide body: left and right block sequences rendered side-by-side.
 #[derive(Debug)]
 pub struct Columns {
     pub left: Vec<Block>,
     pub right: Vec<Block>,
 }
 
+/// How a slide's content is laid out. Selected by HTML-comment directives in
+/// markdown: `<!-- layout: center -->` for `Center`, a `::: columns` block for
+/// `Columns`. Drives renderer dispatch in [`crate::render::render_slide`].
 #[derive(Debug, Default)]
 pub enum Layout {
     #[default]
@@ -64,6 +81,14 @@ pub enum Layout {
     Columns,
 }
 
+/// Parse a markdown deck.
+///
+/// Extracts an optional TOML frontmatter (`---`-fenced), splits the body on
+/// `---` separators, parses each slide's blocks, and applies the deck-level
+/// background to the first slide if it doesn't already have one.
+///
+/// Always returns a `Deck`; malformed frontmatter falls back to defaults
+/// rather than erroring.
 pub fn parse_deck(input: &str) -> Deck {
     let (meta, body) = extract_frontmatter(input);
     let raw_slides = split_slides(&body);

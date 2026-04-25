@@ -8,7 +8,7 @@ Terminal presentations with style.
 
 A tiny, single-binary presentation tool written in Rust. Render Markdown slides in your terminal with animated mathematical backgrounds, a hacker aesthetic, progressive bullet reveal, column layouts, and a full presenter mode.
 
-**~3 MB binary. No server. No dependencies. Just `deck talk.md`.**
+**~3 MB binary. No server. No runtime dependencies. Just `deck talk.md`.**
 
 ## Features
 

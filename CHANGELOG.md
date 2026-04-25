@@ -4,6 +4,39 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Security
+- Cap decoded image dimensions and allocations to defuse decompression-bomb images
+  in shared decks
+
+### Fixed
+- Sync files now connect across CWDs and absolute/relative path forms by
+  canonicalizing the input path before hashing
+- Image references with absolute paths (e.g. `/usr/share/icons/foo.png`) are no
+  longer silently rejected by the path-traversal sandbox
+- Frontmatter parser handles CRLF line endings (Windows-authored markdown)
+- Decrypt entrance no longer corrupts wide-grapheme continuation cells in titles
+- Big-text rendering falls back to plain text when any character lacks a glyph,
+  rather than silently dropping the unsupported chars (e.g. "café" → "CAFÉ")
+
+### Performance
+- Highlighted code blocks cached behind `Arc` — cache hits are a refcount bump
+  instead of a deep clone of every line and span
+- Image cache keyed by the raw `src` string so repeated frames skip
+  per-frame `canonicalize` syscalls
+- Image cache uses FIFO eviction (one entry at a time) instead of clearing
+  the whole cache on overflow; originals are now bounded too
+
+### Internal
+- Shared FNV-1a `fnv1a` helper in `util.rs`, replacing duplicated impls
+- `Rng::next_f64` now uses the full 53-bit f64 mantissa (no modulo bias)
+- Sync and app tests use unique per-test paths so parallel `cargo test` runs
+  do not collide
+- Defensive `saturating_sub(1)` on `slides.len()` at navigation call sites
+- Exhaustive `EntranceKind` match in render — adding a new variant is a
+  compile error, not a silent no-op
+
 ## [0.1.0] - 2026-04-01
 
 ### Added

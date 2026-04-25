@@ -56,6 +56,12 @@ pub struct EntranceTracker {
     current_slide: usize,
 }
 
+impl Default for EntranceTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EntranceTracker {
     pub fn new() -> Self {
         Self {
@@ -113,8 +119,11 @@ pub fn apply_decrypt(frame: &mut Frame, rect: Rect, progress: f64, theme: &Theme
         for x in rect.x..rect.x + rect.width {
             if rng.next_f64() > progress {
                 if let Some(cell) = buf.cell_mut((x, y)) {
-                    let sym = cell.symbol().to_string();
-                    if sym != " " {
+                    // Skip blank cells AND wide-grapheme continuation cells
+                    // (whose `symbol()` is `""`) — overwriting the second cell of
+                    // a wide character corrupts the rendering.
+                    let sym = cell.symbol();
+                    if !sym.is_empty() && sym != " " {
                         let ch = GLITCH_CHARS[rng.next() as usize % GLITCH_CHARS.len()];
                         cell.set_char(ch);
                         cell.set_style(Style::default().fg(theme.accent).bg(theme.bg));

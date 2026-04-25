@@ -171,7 +171,7 @@ mod tests {
         let mut rng = Rng::new(123);
         for _ in 0..1000 {
             let v = rng.next_f64();
-            assert!(v >= 0.0 && v < 1.0, "got {}", v);
+            assert!((0.0..1.0).contains(&v), "got {v}");
         }
     }
 

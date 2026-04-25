@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::Write as FmtWrite;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -18,29 +18,103 @@ pub enum ImageProtocol {
     HalfBlocks,
 }
 
-/// Cached images keyed by (path, target_cols, target_rows).
-/// Stores already-resized images so resize only happens once per size.
+/// Cap on decoded image dimensions and allocation, to defuse decompression
+/// bombs in attacker-controlled image files.
+const MAX_IMAGE_DIM: u32 = 8192;
+
+/// FIFO-evicted cache. Insertion order is tracked so we never thrash the whole
+/// cache on overflow — only the oldest entry is dropped.
+struct FifoCache<K, V> {
+    map: HashMap<K, V>,
+    order: VecDeque<K>,
+    capacity: usize,
+}
+
+impl<K: std::hash::Hash + Eq + Clone, V> FifoCache<K, V> {
+    fn new(capacity: usize) -> Self {
+        Self {
+            map: HashMap::new(),
+            order: VecDeque::new(),
+            capacity,
+        }
+    }
+
+    fn get(&self, k: &K) -> Option<&V> {
+        self.map.get(k)
+    }
+
+    fn contains(&self, k: &K) -> bool {
+        self.map.contains_key(k)
+    }
+
+    fn insert(&mut self, k: K, v: V) {
+        while self.map.len() >= self.capacity {
+            if let Some(old) = self.order.pop_front() {
+                self.map.remove(&old);
+            } else {
+                break;
+            }
+        }
+        self.order.push_back(k.clone());
+        self.map.insert(k, v);
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.map.len()
+    }
+}
+
+/// Cache key keyed by raw `src` string (skips per-frame canonicalize).
+type ResizedKey = (String, u16, u16);
+
+/// Cached images keyed by `(src, target_cols, target_rows)`.
+/// Stores already-resized images so resize/decode happens once per size.
 pub struct ImageCache {
-    /// Original decoded images keyed by path.
-    originals: HashMap<String, Arc<RgbaImage>>,
-    /// Resized images keyed by (path, cols, rows).
-    resized: HashMap<(String, u16, u16), Arc<RgbaImage>>,
-    /// Pre-encoded Kitty base64 PNG keyed by (path, cols, rows).
-    encoded: HashMap<(String, u16, u16), String>,
-    /// Maximum number of resized entries before eviction.
-    max_resized: usize,
+    /// Original decoded images keyed by raw src string.
+    originals: FifoCache<String, Arc<RgbaImage>>,
+    /// Resized images keyed by (src, cols, rows).
+    resized: FifoCache<ResizedKey, Arc<RgbaImage>>,
+    /// Pre-encoded Kitty base64 PNG keyed by (src, cols, rows).
+    encoded: FifoCache<ResizedKey, String>,
+    /// `src` strings that have already passed the path-traversal check.
+    /// Avoids re-running canonicalize on every cache hit.
+    validated: HashMap<String, ()>,
 }
 
 const DEFAULT_MAX_RESIZED: usize = 64;
+const DEFAULT_MAX_ORIGINALS: usize = 16;
+const DEFAULT_MAX_ENCODED: usize = 64;
 
 impl ImageCache {
     pub fn new() -> Self {
         Self {
-            originals: HashMap::new(),
-            resized: HashMap::new(),
-            encoded: HashMap::new(),
-            max_resized: DEFAULT_MAX_RESIZED,
+            originals: FifoCache::new(DEFAULT_MAX_ORIGINALS),
+            resized: FifoCache::new(DEFAULT_MAX_RESIZED),
+            encoded: FifoCache::new(DEFAULT_MAX_ENCODED),
+            validated: HashMap::new(),
         }
+    }
+
+    /// Resolve and validate `src`. Absolute paths are trusted (the user
+    /// explicitly typed them); relative paths are sandboxed to `base_dir`.
+    /// Returns the canonicalized path on success.
+    fn resolve_and_validate(&mut self, src: &str, base_dir: &Path) -> Option<PathBuf> {
+        if self.validated.contains_key(src) {
+            // Already validated this exact src in a prior call.
+            // We still need the resolved path; recompute (cheap if cached at OS level).
+            return resolve(src, base_dir);
+        }
+        let resolved = resolve(src, base_dir)?;
+        let is_absolute = Path::new(src).is_absolute();
+        if !is_absolute {
+            let base = base_dir.canonicalize().ok()?;
+            if !resolved.starts_with(&base) {
+                return None;
+            }
+        }
+        self.validated.insert(src.to_string(), ());
+        Some(resolved)
     }
 
     /// Load, resize, and cache an image for the given area dimensions.
@@ -52,71 +126,76 @@ impl ImageCache {
         max_cols: u16,
         max_rows: u16,
     ) -> Option<&Arc<RgbaImage>> {
-        let full_path = if Path::new(src).is_absolute() {
-            PathBuf::from(src)
-        } else {
-            base_dir.join(src)
-        };
+        let key: ResizedKey = (src.to_string(), max_cols, max_rows);
 
-        // Path traversal guard: resolved path must stay within base_dir
-        let resolved = full_path.canonicalize().ok()?;
-        let base = base_dir.canonicalize().ok()?;
-        if !resolved.starts_with(&base) {
-            return None;
+        if self.resized.contains(&key) {
+            return self.resized.get(&key);
         }
 
-        let key = resolved.to_string_lossy().to_string();
-        let cache_key = (key.clone(), max_cols, max_rows);
+        // Cache miss: validate path, decode if needed, resize.
+        let resolved = self.resolve_and_validate(src, base_dir)?;
 
-        if self.resized.contains_key(&cache_key) {
-            return self.resized.get(&cache_key);
+        if !self.originals.contains(&src.to_string()) {
+            let img = decode_with_limits(&resolved)?;
+            self.originals.insert(src.to_string(), Arc::new(img));
         }
 
-        // Evict if cache is too large
-        if self.resized.len() >= self.max_resized {
-            self.resized.clear();
-            self.encoded.clear();
-        }
-
-        // Decode original if not cached
-        if !self.originals.contains_key(&key) {
-            let img = image::open(&resolved).ok()?;
-            self.originals.insert(key.clone(), Arc::new(img.to_rgba8()));
-        }
-
-        let original = self.originals.get(&key)?;
-        let resized = resize_to_fit(original, max_cols, max_rows);
-        self.resized.insert(cache_key.clone(), Arc::new(resized));
-        self.resized.get(&cache_key)
+        let original = self.originals.get(&src.to_string())?.clone();
+        let resized = resize_to_fit(&original, max_cols, max_rows);
+        self.resized.insert(key.clone(), Arc::new(resized));
+        self.resized.get(&key)
     }
 
     /// Get pre-encoded Kitty base64 PNG for a cached resized image.
-    /// Computes and caches on first call for each (path, cols, rows).
+    /// Computes and caches on first call for each (src, cols, rows).
     pub fn get_encoded_kitty(
         &mut self,
         src: &str,
-        base_dir: &Path,
+        _base_dir: &Path,
         max_cols: u16,
         max_rows: u16,
     ) -> Option<&str> {
-        let full_path = if Path::new(src).is_absolute() {
-            PathBuf::from(src)
-        } else {
-            base_dir.join(src)
-        };
-        let resolved = full_path.canonicalize().ok()?;
-        let key = resolved.to_string_lossy().to_string();
-        let cache_key = (key, max_cols, max_rows);
+        let key: ResizedKey = (src.to_string(), max_cols, max_rows);
 
-        if self.encoded.contains_key(&cache_key) {
-            return self.encoded.get(&cache_key).map(|s| s.as_str());
+        if self.encoded.contains(&key) {
+            return self.encoded.get(&key).map(|s| s.as_str());
         }
 
-        let img = self.resized.get(&cache_key)?;
+        let img = self.resized.get(&key)?;
         let b64 = encode_kitty_png(img)?;
-        self.encoded.insert(cache_key.clone(), b64);
-        self.encoded.get(&cache_key).map(|s| s.as_str())
+        self.encoded.insert(key.clone(), b64);
+        self.encoded.get(&key).map(|s| s.as_str())
     }
+}
+
+impl Default for ImageCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn resolve(src: &str, base_dir: &Path) -> Option<PathBuf> {
+    let full_path = if Path::new(src).is_absolute() {
+        PathBuf::from(src)
+    } else {
+        base_dir.join(src)
+    };
+    full_path.canonicalize().ok()
+}
+
+/// Decode an image with conservative dimension limits to defuse decompression
+/// bombs. Falls back to None on any decode error.
+fn decode_with_limits(path: &Path) -> Option<RgbaImage> {
+    let mut reader = image::ImageReader::open(path)
+        .ok()?
+        .with_guessed_format()
+        .ok()?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_IMAGE_DIM);
+    limits.max_image_height = Some(MAX_IMAGE_DIM);
+    reader.limits(limits);
+    let img = reader.decode().ok()?;
+    Some(img.to_rgba8())
 }
 
 /// Encode RGBA image to PNG then base64 for Kitty protocol.
@@ -392,8 +471,8 @@ mod tests {
     #[test]
     fn image_cache_new_is_empty() {
         let cache = ImageCache::new();
-        assert!(cache.originals.is_empty());
-        assert!(cache.resized.is_empty());
+        assert_eq!(cache.originals.len(), 0);
+        assert_eq!(cache.resized.len(), 0);
     }
 
     #[test]
@@ -467,5 +546,16 @@ mod tests {
         let mut output = Vec::new();
         flush_deferred(&mut output, &images).unwrap();
         assert!(output.is_empty()); // HalfBlocks writes nothing
+    }
+
+    #[test]
+    fn fifo_cache_evicts_oldest() {
+        let mut c: FifoCache<u32, &'static str> = FifoCache::new(2);
+        c.insert(1, "a");
+        c.insert(2, "b");
+        c.insert(3, "c"); // evicts 1
+        assert!(c.get(&1).is_none());
+        assert_eq!(c.get(&2), Some(&"b"));
+        assert_eq!(c.get(&3), Some(&"c"));
     }
 }

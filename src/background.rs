@@ -63,47 +63,38 @@ fn apply_percell(frame: &mut Frame, area: Rect, kind: &BackgroundKind, time: f64
 
     for y in 0..area.height {
         for x in 0..area.width {
-            let pos = (area.x + x, area.y + y);
-
-            if !is_empty(buf, pos) {
+            let pos = (area.x.saturating_add(x), area.y.saturating_add(y));
+            let Some(cell) = buf.cell_mut(pos) else {
+                continue;
+            };
+            let sym = cell.symbol();
+            if !sym.is_empty() && sym != " " {
                 continue;
             }
-
             let (ch, brightness) = compute_cell(kind, x, y, area.width, area.height, time);
-            write_bg_cell(buf, pos, ch, brightness, theme);
+            write_bg_cell(cell, ch, brightness, theme);
         }
     }
 }
 
 // ── helpers ────────────────────────────────────────────────────────
 
-fn is_empty(buf: &ratatui::buffer::Buffer, pos: (u16, u16)) -> bool {
-    buf.cell(pos)
-        .map(|c| {
-            let s = c.symbol();
-            s == " " || s.is_empty()
-        })
-        .unwrap_or(false)
-}
-
+/// Mutates `cell` to draw a background glyph at the given brightness. Skipping
+/// the empty-cell check is intentional — callers gate on `cell.symbol()` so
+/// they only call this for cells that should be painted.
 fn write_bg_cell(
-    buf: &mut ratatui::buffer::Buffer,
-    pos: (u16, u16),
+    cell: &mut ratatui::buffer::Cell,
     ch: char,
     brightness: f64,
     theme: &Theme,
 ) {
     if brightness < 0.02 {
-        if let Some(cell) = buf.cell_mut(pos) {
-            cell.set_char(' ');
-            cell.set_style(Style::default().bg(theme.bg));
-        }
+        cell.set_char(' ');
+        cell.set_style(Style::default().bg(theme.bg));
     } else {
         let fg = shade_color(theme, brightness);
-        if let Some(cell) = buf.cell_mut(pos) {
-            cell.set_char(ch);
-            cell.set_style(Style::default().fg(fg).bg(theme.bg));
-        }
+        cell.set_char(ch);
+        cell.set_style(Style::default().fg(fg).bg(theme.bg));
     }
 }
 
@@ -282,11 +273,14 @@ fn apply_lissajous_inner(
     let buf = frame.buffer_mut();
     for y in 0..area.height {
         for x in 0..area.width {
-            let pos = (area.x + x, area.y + y);
-            if !is_empty(buf, pos) {
+            let pos = (area.x.saturating_add(x), area.y.saturating_add(y));
+            let Some(cell) = buf.cell_mut(pos) else {
+                continue;
+            };
+            let sym = cell.symbol();
+            if !sym.is_empty() && sym != " " {
                 continue;
             }
-
             let brightness = grid[y as usize * w + x as usize];
             let ch = if brightness > 0.75 {
                 '█'
@@ -301,7 +295,7 @@ fn apply_lissajous_inner(
             } else {
                 ' '
             };
-            write_bg_cell(buf, pos, ch, brightness, theme);
+            write_bg_cell(cell, ch, brightness, theme);
         }
     }
 }
@@ -582,8 +576,12 @@ fn apply_orbit_inner(
     let buf = frame.buffer_mut();
     for y in 0..area.height {
         for x in 0..area.width {
-            let pos = (area.x + x, area.y + y);
-            if !is_empty(buf, pos) {
+            let pos = (area.x.saturating_add(x), area.y.saturating_add(y));
+            let Some(cell) = buf.cell_mut(pos) else {
+                continue;
+            };
+            let sym = cell.symbol();
+            if !sym.is_empty() && sym != " " {
                 continue;
             }
             let brightness = grid[y as usize * w + x as usize];
@@ -596,7 +594,7 @@ fn apply_orbit_inner(
             } else {
                 ' '
             };
-            write_bg_cell(buf, pos, ch, brightness, theme);
+            write_bg_cell(cell, ch, brightness, theme);
         }
     }
 }

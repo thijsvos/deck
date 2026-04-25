@@ -67,6 +67,19 @@ impl<K: std::hash::Hash + Eq + Clone, V> FifoCache<K, V> {
     }
 }
 
+impl<V> FifoCache<String, V> {
+    /// Borrowed-key lookup for `String`-keyed caches. Avoids the per-call
+    /// `to_string()` that callers would otherwise need to construct an owned
+    /// key for `HashMap::contains_key`.
+    fn contains_key_str(&self, k: &str) -> bool {
+        self.map.contains_key(k)
+    }
+
+    fn get_str(&self, k: &str) -> Option<&V> {
+        self.map.get(k)
+    }
+}
+
 /// Cache key keyed by the raw `src` string. Avoids canonicalizing the path
 /// on every frame's lookup; canonicalize only runs on cache miss to validate
 /// the path.
@@ -77,20 +90,16 @@ type ResizedKey = (String, u16, u16);
 /// - `originals`: decoded RGBA images keyed by raw `src`
 /// - `resized`: resized images keyed by `(src, cols, rows)`
 /// - `encoded`: pre-encoded Kitty base64 PNG keyed by `(src, cols, rows)`
-/// - `validated`: set of `src` strings that have already passed the
-///   path-traversal check
 ///
 /// Each tier is FIFO-evicted independently. Decode + resize + encode each
-/// happen at most once per unique key.
+/// happen at most once per unique key. Sandbox validation (`resolve_and_validate`)
+/// runs on every cache miss; there is no per-`src` validation cache because the
+/// canonicalize syscall is cheap relative to image decode and a stale validation
+/// cache would silently keep accepting paths after `base_dir` moved.
 pub struct ImageCache {
     originals: FifoCache<String, Arc<RgbaImage>>,
     resized: FifoCache<ResizedKey, Arc<RgbaImage>>,
     encoded: FifoCache<ResizedKey, String>,
-    /// `src` strings that have already passed the path-traversal check.
-    /// Avoids re-running the `base_dir.canonicalize()` + `starts_with` check
-    /// on every cache hit. The `src` itself is still re-canonicalized via
-    /// `resolve()` on hit to recover the resolved path.
-    validated: HashMap<String, ()>,
 }
 
 const DEFAULT_MAX_RESIZED: usize = 64;
@@ -105,32 +114,38 @@ impl ImageCache {
             originals: FifoCache::new(DEFAULT_MAX_ORIGINALS),
             resized: FifoCache::new(DEFAULT_MAX_RESIZED),
             encoded: FifoCache::new(DEFAULT_MAX_ENCODED),
-            validated: HashMap::new(),
         }
     }
 
-    /// Resolve and validate `src`. Absolute paths are trusted (the user
-    /// explicitly typed them) and bypass the sandbox check; relative paths
-    /// are sandboxed to `base_dir`. Returns the canonicalized path on success.
+    /// Resolve and sandbox-check `src`. Returns the canonicalized path on success.
     ///
-    /// The first call for a given `src` runs the full sandbox check; later
-    /// calls for the same `src` short-circuit via the `validated` set and
-    /// re-resolve the path only. The `validated` set is never invalidated,
-    /// so renaming or moving `base_dir` after first validation is not
-    /// detected.
-    fn resolve_and_validate(&mut self, src: &str, base_dir: &Path) -> Option<PathBuf> {
-        if self.validated.contains_key(src) {
-            return resolve(src, base_dir);
-        }
+    /// The check applies to both relative and absolute paths from the markdown:
+    /// the resolved path must live under `base_dir`, even when the markdown writes
+    /// an absolute `src`. Symlinks under `base_dir` are refused outright — without
+    /// this, a symlink at e.g. `./innocent.png -> /home/user/.ssh/id_rsa` would
+    /// `canonicalize()` to a target outside `base_dir` and fall through to a
+    /// decode error that still leaks file existence via timing.
+    fn resolve_and_validate(&self, src: &str, base_dir: &Path) -> Option<PathBuf> {
         let resolved = resolve(src, base_dir)?;
-        let is_absolute = Path::new(src).is_absolute();
-        if !is_absolute {
-            let base = base_dir.canonicalize().ok()?;
-            if !resolved.starts_with(&base) {
-                return None;
-            }
+        let base = base_dir.canonicalize().ok()?;
+        if !resolved.starts_with(&base) {
+            return None;
         }
-        self.validated.insert(src.to_string(), ());
+        // Refuse symlinks (resolved is already canonicalized, but the original
+        // src may have been a symlink whose canonical target happens to land
+        // inside base_dir; symlink_metadata sees the link itself).
+        let original = if Path::new(src).is_absolute() {
+            PathBuf::from(src)
+        } else {
+            base_dir.join(src)
+        };
+        if std::fs::symlink_metadata(&original)
+            .ok()?
+            .file_type()
+            .is_symlink()
+        {
+            return None;
+        }
         Some(resolved)
     }
 
@@ -155,12 +170,12 @@ impl ImageCache {
         // Cache miss: validate path, decode if needed, resize.
         let resolved = self.resolve_and_validate(src, base_dir)?;
 
-        if !self.originals.contains(&src.to_string()) {
+        if !self.originals.contains_key_str(src) {
             let img = decode_with_limits(&resolved)?;
             self.originals.insert(src.to_string(), Arc::new(img));
         }
 
-        let original = self.originals.get(&src.to_string())?.clone();
+        let original = self.originals.get_str(src)?.clone();
         let resized = resize_to_fit(&original, max_cols, max_rows);
         self.resized.insert(key.clone(), Arc::new(resized));
         self.resized.get(&key)
@@ -367,13 +382,14 @@ fn render_kitty<W: Write>(w: &mut W, d: &DeferredImage) -> std::io::Result<()> {
 
     // Send chunked if >4096 bytes
     let chunk_size = 4096;
-    let chunks: Vec<&[u8]> = b64.as_bytes().chunks(chunk_size).collect();
+    let bytes = b64.as_bytes();
+    let total_chunks = bytes.len().div_ceil(chunk_size).max(1);
 
-    if chunks.len() <= 1 {
+    if total_chunks <= 1 {
         write!(w, "\x1b_Ga=T,f=100,c={},r={};{}\x1b\\", d.cols, d.rows, b64)?;
     } else {
-        for (i, chunk) in chunks.iter().enumerate() {
-            let is_last = i == chunks.len() - 1;
+        for (i, chunk) in bytes.chunks(chunk_size).enumerate() {
+            let is_last = i + 1 == total_chunks;
             let m = if is_last { 0 } else { 1 };
             let chunk_str =
                 std::str::from_utf8(chunk).expect("base64 output is always valid ASCII/UTF-8");

@@ -2,19 +2,17 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use ratatui::{
-    layout::{Constraint, Direction, Layout as RLayout, Rect},
-    text::{Line, Span as RSpan},
-    widgets::{Block as WidgetBlock, Borders, Clear, Paragraph},
+    layout::{Constraint, Direction, Layout as RLayout},
     Frame,
 };
 
 use crate::background;
+use crate::bigtext::BigtextCache;
 use crate::entrance::EntranceTracker;
 use crate::highlight::Highlighter;
 use crate::image_renderer::{DeferredImage, ImageCache, ImageProtocol};
 use crate::input::{map_key, Action};
-use crate::markdown::Block;
-use crate::parse::{Deck, Slide};
+use crate::parse::Deck;
 use crate::render;
 use crate::render_presenter;
 use crate::sync::SyncFile;
@@ -81,6 +79,9 @@ pub struct App {
     pub base_dir: PathBuf,
     /// Cached syntect highlighter for fenced code blocks.
     pub highlighter: Highlighter,
+    /// Cached `bigtext::render` outputs so an unchanging H1 isn't re-rasterized
+    /// every frame.
+    pub bigtext_cache: BigtextCache,
     /// Per-block entrance animation tracker. Reset on slide change.
     pub entrances: EntranceTracker,
 }
@@ -100,7 +101,7 @@ impl App {
         base_dir: PathBuf,
     ) -> Self {
         assert!(!deck.slides.is_empty(), "deck must have at least one slide");
-        let reveal = initial_reveal(&deck.slides[0]);
+        let reveal = deck.slides[0].initial_reveal();
         let now = Instant::now();
         Self {
             deck,
@@ -121,6 +122,7 @@ impl App {
             deferred_images: Vec::new(),
             base_dir,
             highlighter: Highlighter::new(),
+            bigtext_cache: BigtextCache::new(),
             entrances: EntranceTracker::new(),
         }
     }
@@ -166,6 +168,7 @@ impl App {
             deferred: &mut self.deferred_images,
             base_dir: &self.base_dir,
             highlighter: &mut self.highlighter,
+            bigtext: &mut self.bigtext_cache,
             entrances: &mut self.entrances,
             slide_index: self.slide_index,
         };
@@ -213,20 +216,22 @@ impl App {
         render::render_status_bar(
             frame,
             status_area,
-            &self.deck.meta.title,
-            self.deck.meta.author.as_deref(),
-            self.slide_index + 1,
-            self.deck.slides.len(),
-            elapsed,
+            &render::StatusBar {
+                title: &self.deck.meta.title,
+                author: self.deck.meta.author.as_deref(),
+                slide_num: self.slide_index + 1,
+                total: self.deck.slides.len(),
+                elapsed_secs: elapsed,
+            },
             &self.theme,
         );
 
         // Overlays
         if self.show_help {
-            render_help(frame, area, &self.theme);
+            render::help_overlay(frame, area, &self.theme);
         }
         if self.in_goto {
-            render_goto(frame, area, &self.goto_input, &self.theme);
+            render::goto_overlay(frame, area, &self.goto_input, &self.theme);
         }
     }
 
@@ -338,24 +343,24 @@ impl App {
     }
 
     fn advance(&mut self) {
-        let total_bullets = count_bullets(&self.deck.slides[self.slide_index]);
+        let total_bullets = self.deck.slides[self.slide_index].bullet_count();
         if total_bullets > 0 && self.reveal_count < total_bullets {
             self.reveal_count += 1;
         } else if self.slide_index + 1 < self.deck.slides.len() {
             self.slide_index += 1;
-            self.reveal_count = initial_reveal(&self.deck.slides[self.slide_index]);
+            self.reveal_count = self.deck.slides[self.slide_index].initial_reveal();
             self.start_transition();
         }
         self.write_sync();
     }
 
     fn go_back(&mut self) {
-        let total_bullets = count_bullets(&self.deck.slides[self.slide_index]);
+        let total_bullets = self.deck.slides[self.slide_index].bullet_count();
         if total_bullets > 0 && self.reveal_count > 0 {
             self.reveal_count -= 1;
         } else if self.slide_index > 0 {
             self.slide_index -= 1;
-            let prev_bullets = count_bullets(&self.deck.slides[self.slide_index]);
+            let prev_bullets = self.deck.slides[self.slide_index].bullet_count();
             self.reveal_count = if prev_bullets > 0 {
                 prev_bullets
             } else {
@@ -370,7 +375,7 @@ impl App {
         let new_index = index.min(self.deck.slides.len().saturating_sub(1));
         if new_index != self.slide_index {
             self.slide_index = new_index;
-            self.reveal_count = initial_reveal(&self.deck.slides[self.slide_index]);
+            self.reveal_count = self.deck.slides[self.slide_index].initial_reveal();
             self.start_transition();
         }
         self.write_sync();
@@ -388,83 +393,6 @@ impl App {
     }
 }
 
-fn count_bullets(slide: &Slide) -> usize {
-    slide
-        .blocks
-        .iter()
-        .map(|b| match b {
-            Block::BulletList { items } => items.len(),
-            _ => 0,
-        })
-        .sum()
-}
-
-fn initial_reveal(slide: &Slide) -> usize {
-    let total = count_bullets(slide);
-    if total > 0 {
-        0
-    } else {
-        usize::MAX
-    }
-}
-
-fn render_help(frame: &mut Frame, area: Rect, theme: &Theme) {
-    let help_lines = [
-        "",
-        "  Navigation",
-        "  ─────────────────────────",
-        "  →/Space/Enter/l/j  Next",
-        "  ←/Backspace/h/k    Previous",
-        "  g                  First slide",
-        "  G                  Last slide",
-        "  :N Enter           Go to slide N",
-        "",
-        "  Controls",
-        "  ─────────────────────────",
-        "  p                  Presenter mode",
-        "  r                  Reset timer",
-        "  ?                  Toggle help",
-        "  q/Esc              Quit",
-        "",
-    ];
-
-    let width = 38u16;
-    let height = help_lines.len() as u16 + 2;
-    let x = area.width.saturating_sub(width) / 2;
-    let y = area.height.saturating_sub(height) / 2;
-    let rect = Rect::new(x, y, width, height);
-
-    frame.render_widget(Clear, rect);
-
-    let lines: Vec<Line> = help_lines
-        .iter()
-        .map(|s| Line::from(RSpan::styled(s.to_string(), theme.body_style())))
-        .collect();
-
-    let block = WidgetBlock::default()
-        .borders(Borders::ALL)
-        .border_style(theme.status_accent())
-        .title(" ? Help ");
-
-    frame.render_widget(Paragraph::new(lines).block(block), rect);
-}
-
-fn render_goto(frame: &mut Frame, area: Rect, input: &str, theme: &Theme) {
-    let width = 22u16;
-    let x = area.width.saturating_sub(width) / 2;
-    let y = area.height / 2;
-    let rect = Rect::new(x, y, width, 3);
-
-    frame.render_widget(Clear, rect);
-
-    let text = format!(":{input}_");
-    let block = WidgetBlock::default()
-        .borders(Borders::ALL)
-        .border_style(theme.status_accent())
-        .title(" Go to slide ");
-    let paragraph = Paragraph::new(RSpan::styled(text, theme.body_style())).block(block);
-    frame.render_widget(paragraph, rect);
-}
 
 #[cfg(test)]
 mod tests {
@@ -517,11 +445,11 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 
-    // T1-T3: count_bullets
+    // T1-T3: Slide::bullet_count
     #[test]
     fn count_bullets_empty_slide() {
         let slide = dummy_slide(vec![]);
-        assert_eq!(count_bullets(&slide), 0);
+        assert_eq!(slide.bullet_count(), 0);
     }
 
     #[test]
@@ -534,20 +462,20 @@ mod tests {
                 }],
             },
         ]);
-        assert_eq!(count_bullets(&slide), 3);
+        assert_eq!(slide.bullet_count(), 3);
     }
 
     #[test]
     fn count_bullets_sums_multiple_lists() {
         let slide = dummy_slide(vec![bullet_list(2), bullet_list(3)]);
-        assert_eq!(count_bullets(&slide), 5);
+        assert_eq!(slide.bullet_count(), 5);
     }
 
-    // T4-T5: initial_reveal
+    // T4-T5: Slide::initial_reveal
     #[test]
     fn initial_reveal_with_bullets_returns_zero() {
         let slide = dummy_slide(vec![bullet_list(3)]);
-        assert_eq!(initial_reveal(&slide), 0);
+        assert_eq!(slide.initial_reveal(), 0);
     }
 
     #[test]
@@ -556,7 +484,7 @@ mod tests {
             level: 1,
             text: "Hi".into(),
         }]);
-        assert_eq!(initial_reveal(&slide), usize::MAX);
+        assert_eq!(slide.initial_reveal(), usize::MAX);
     }
 
     // T6-T8: advance

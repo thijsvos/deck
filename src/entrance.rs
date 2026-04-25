@@ -50,9 +50,15 @@ impl EntranceState {
 }
 
 /// Tracks per-block entrance animations across frames.
-/// Keyed by (slide_index, block_index).
+///
+/// Keyed by `(slide_index, block_index, sub_index)`. `sub_index` is `0` for
+/// block-level animations (one entrance per block) and `1..=N` for cascade
+/// items (one per bullet inside a `BulletList`). The `sub != 0` carve-out
+/// keeps the cascade-item key space disjoint from the block-level key,
+/// removing the need for the previous `block_idx * 10_000 + item_i`
+/// magic-number encoding.
 pub struct EntranceTracker {
-    states: HashMap<(usize, usize), EntranceState>,
+    states: HashMap<(usize, usize, usize), EntranceState>,
     current_slide: usize,
 }
 
@@ -88,17 +94,20 @@ impl EntranceTracker {
     /// Returns `None` if the animation is already finished (no need to apply
     /// effects).
     ///
-    /// `kind` and `duration` are only used when creating a new state; on
-    /// subsequent calls for the same `(slide, block_idx)` they are ignored
-    /// and the existing state is returned.
+    /// `sub_idx` is `0` for the block's own entrance and `1..=N` for cascade
+    /// items inside the block (e.g. one per bullet). `kind` and `duration`
+    /// are only used when creating a new state; on subsequent calls for the
+    /// same `(slide, block_idx, sub_idx)` they are ignored and the existing
+    /// state is returned.
     pub fn get_or_start(
         &mut self,
         slide: usize,
         block_idx: usize,
+        sub_idx: usize,
         kind: EntranceKind,
         duration: Duration,
     ) -> Option<&EntranceState> {
-        let key = (slide, block_idx);
+        let key = (slide, block_idx, sub_idx);
         let state = self
             .states
             .entry(key)
@@ -214,7 +223,8 @@ mod tests {
     fn tracker_starts_new_animation() {
         let mut tracker = EntranceTracker::new();
         tracker.on_slide_change(0);
-        let state = tracker.get_or_start(0, 0, EntranceKind::Decrypt, Duration::from_millis(600));
+        let state =
+            tracker.get_or_start(0, 0, 0, EntranceKind::Decrypt, Duration::from_millis(600));
         assert!(state.is_some());
     }
 
@@ -222,7 +232,7 @@ mod tests {
     fn tracker_clears_on_slide_change() {
         let mut tracker = EntranceTracker::new();
         tracker.on_slide_change(0);
-        tracker.get_or_start(0, 0, EntranceKind::Decrypt, Duration::from_millis(600));
+        tracker.get_or_start(0, 0, 0, EntranceKind::Decrypt, Duration::from_millis(600));
         assert!(tracker.has_active());
         tracker.on_slide_change(1);
         assert!(!tracker.has_active());
@@ -234,10 +244,11 @@ mod tests {
         tracker.on_slide_change(0);
         // Insert a state that's already done
         tracker.states.insert(
-            (0, 0),
+            (0, 0, 0),
             EntranceState::new(EntranceKind::FadeIn, Duration::ZERO),
         );
-        let state = tracker.get_or_start(0, 0, EntranceKind::FadeIn, Duration::from_millis(200));
+        let state =
+            tracker.get_or_start(0, 0, 0, EntranceKind::FadeIn, Duration::from_millis(200));
         assert!(state.is_none()); // already finished
     }
 
@@ -284,7 +295,7 @@ mod tests {
     fn tracker_has_active_with_running() {
         let mut tracker = EntranceTracker::new();
         tracker.on_slide_change(0);
-        tracker.get_or_start(0, 0, EntranceKind::Decrypt, Duration::from_secs(10));
+        tracker.get_or_start(0, 0, 0, EntranceKind::Decrypt, Duration::from_secs(10));
         assert!(tracker.has_active());
     }
 }

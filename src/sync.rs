@@ -1,8 +1,14 @@
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 
 use crate::util::fnv1a;
+
+/// Maximum bytes read from the sync file. The payload is a tiny ASCII
+/// `"<slide> <reveal>"`, so 256 bytes is generous and caps the worst case
+/// where a local attacker swaps the sync file for a symlink to `/dev/zero` or
+/// a multi-GB file.
+const MAX_SYNC_BYTES: u64 = 256;
 
 /// Tiny file-based sync between presenter and follower instances.
 /// The presenter writes `slide_index reveal_count` to a temp file.
@@ -52,7 +58,12 @@ impl SyncFile {
     /// missing, unreadable, malformed (fewer than two whitespace-separated
     /// tokens), or contains values that don't parse as `usize`.
     pub fn read(&self) -> Option<(usize, usize)> {
-        let content = fs::read_to_string(&self.path).ok()?;
+        let mut content = String::with_capacity(64);
+        fs::File::open(&self.path)
+            .ok()?
+            .take(MAX_SYNC_BYTES)
+            .read_to_string(&mut content)
+            .ok()?;
         let mut parts = content.split_whitespace();
         let slide = parts.next()?.parse().ok()?;
         let reveal = parts.next()?.parse().ok()?;

@@ -63,6 +63,32 @@ pub struct Slide {
     pub background: Option<BackgroundKind>,
 }
 
+impl Slide {
+    /// Total bullets across all top-level `BulletList` blocks. Numbered lists
+    /// and bullets nested inside other blocks (e.g. columns) are excluded —
+    /// only the top-level reveal cursor consumes these.
+    pub fn bullet_count(&self) -> usize {
+        self.blocks
+            .iter()
+            .map(|b| match b {
+                Block::BulletList { items } => items.len(),
+                _ => 0,
+            })
+            .sum()
+    }
+
+    /// Initial value of `App::reveal_count` for this slide: `0` when there are
+    /// bullets to progressively reveal, `usize::MAX` otherwise so `advance`
+    /// moves straight to the next slide.
+    pub fn initial_reveal(&self) -> usize {
+        if self.bullet_count() > 0 {
+            0
+        } else {
+            usize::MAX
+        }
+    }
+}
+
 /// Two-column slide body: left and right block sequences rendered side-by-side.
 #[derive(Debug)]
 pub struct Columns {
@@ -126,9 +152,24 @@ fn extract_frontmatter(input: &str) -> (DeckMeta, String) {
     };
     let after_first = after_first.trim_start_matches(['\n', '\r']);
 
-    if let Some(end) = after_first.find("\n---") {
+    // Match end-of-frontmatter only when `---` is line-anchored: followed by
+    // EOF, `\n`, or `\r\n`. Avoids prematurely terminating on a TOML triple-
+    // quoted string that happens to contain `\n---`.
+    let mut search_from = 0;
+    let end = loop {
+        let Some(pos) = after_first[search_from..].find("\n---") else {
+            break None;
+        };
+        let abs = search_from + pos;
+        let after = &after_first[abs + 4..];
+        if after.is_empty() || after.starts_with('\n') || after.starts_with("\r\n") {
+            break Some(abs);
+        }
+        search_from = abs + 4;
+    };
+    if let Some(end) = end {
         let frontmatter_str = &after_first[..end];
-        let rest = &after_first[end + 4..];
+        let rest = after_first.get(end + 4..).unwrap_or("");
 
         if let Ok(meta) = toml::from_str::<DeckMeta>(frontmatter_str) {
             return (meta, rest.to_string());

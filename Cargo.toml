@@ -1,6 +1,6 @@
 [package]
 name = "deck"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Terminal presentations with style - animated backgrounds, hacker aesthetic, presenter mode"
 authors = ["Thijs Vos"]

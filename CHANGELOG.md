@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-25
+
 ### Security
 - Cap decoded image dimensions and allocations to defuse decompression-bomb images
   in shared decks
@@ -27,6 +29,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   per-frame `canonicalize` syscalls
 - Image cache uses FIFO eviction (one entry at a time) instead of clearing
   the whole cache on overflow; originals are now bounded too
+
+### Documentation
+- Public API surface (App, Deck, Theme, render, transitions, input, etc.) now
+  carries rustdoc; existing docstrings updated to match post-refactor behavior
+  (sync error handling, image cache tiers, entrance-tracker semantics)
 
 ### Internal
 - Shared FNV-1a `fnv1a` helper in `util.rs`, replacing duplicated impls

@@ -6,6 +6,58 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-04-26
+
+### Security
+- `image_renderer::resolve_and_validate` sandbox-checks every image path
+  (relative *and* absolute) and refuses symlinks via `symlink_metadata`;
+  the `validated` cache (which had a stale-validation hazard) is gone
+- 16 MB cap on deck file reads; 256 B cap on sync-file reads — defuses
+  a symlink-to-`/dev/zero` DoS
+- Frontmatter end detection is line-anchored, so `\n---` inside TOML
+  triple-quoted strings no longer terminates the frontmatter early
+- Saturating `u16` arithmetic on every row computation in `render.rs`
+  (release profile has `overflow-checks` off); `saturating_mul` for
+  typewriter duration; `u16::try_from` for resized image dims instead
+  of `as u16` truncation
+- `Block::HorizontalRule` writes `─` cells directly into the buffer —
+  drops the `"─".repeat(width)` allocation/DoS surface
+
+### Performance
+- `Highlighter` and the new `BigtextCache` rekey on an `fnv1a` hash so
+  cache hits no longer allocate a `String` per frame
+- `spans_to_line` returns `Line<'a>` borrowing from the parsed slide
+  instead of cloning each span's `String` per frame
+- `theme.bullet_prefix` is built once at theme construction; bullet
+  rendering deduplicated into a single helper
+- Typewriter slicing is byte-accurate via `char_indices`; the full-line
+  `String` allocation that existed solely for counting is gone
+- Code-block path reuses the cached `Arc<Vec<Line>>` once the
+  typewriter is finished, skipping the per-frame `Vec<Line>` rebuild
+- H1 path emits a single `Paragraph::new(Vec<Line>)` instead of one
+  widget per row
+- Animated-background loops fold the `is_empty` check into the
+  `cell_mut` borrow — one buffer lookup per cell instead of two
+- Kitty base64 chunks iterated directly without a `Vec<&[u8]>` collect
+- ASCII fast path in `estimate_line_height` skips the East-Asian-Width
+  walk for English text
+
+### Internal
+- `render_block` split into eight per-arm helpers; dispatcher is now
+  ~12 lines, and `(u16, Option<Rect>)` is replaced by a named
+  `BlockRender { height, entrance_target }` struct
+- `render_help` / `render_goto` moved out of `app.rs` into
+  `render::help_overlay` / `goto_overlay`
+- `count_bullets` / `initial_reveal` are now `Slide::bullet_count` /
+  `Slide::initial_reveal` methods
+- Main-loop tick durations promoted to named `ANIMATION_TICK`,
+  `BACKGROUND_TICK`, `IDLE_TICK` constants
+- 8-arg `render_status_bar` replaced by a `StatusBar<'a>` config
+  struct (kills the `#[allow(clippy::too_many_arguments)]` band-aid)
+- `EntranceTracker` key widened to `(slide, block, sub)`; cascade items
+  use `sub = item_i + 1`, removing the `block_idx * 10_000 + item_i`
+  magic encoding
+
 ## [0.2.0] - 2026-04-25
 
 ### Security
